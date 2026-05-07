@@ -118,6 +118,14 @@ std::wstring GetEnvPath(const wchar_t* name) {
     return buffer;
 }
 
+std::pair<std::wstring, std::wstring> SplitCustomPayload(const std::wstring& payload) {
+    size_t pos = payload.find(L'\n');
+    if (pos == std::wstring::npos) {
+        return {payload, L""};
+    }
+    return {payload.substr(0, pos), payload.substr(pos + 1)};
+}
+
 std::wstring PresetDisplayPath(const std::filesystem::path& root, const std::filesystem::path& file) {
     std::error_code ec;
     std::filesystem::path rel = std::filesystem::relative(file, root, ec);
@@ -405,6 +413,54 @@ void ApplyResult(const PBQA_ResultItem& item) {
             "src.selected=true;"
             "}catch(e){alert('Reveal Source error: '+e.toString());}"
             "})();");
+    } else if (item.kind == L"Custom") {
+        auto [action_w, value_w] = SplitCustomPayload(item.payload);
+        std::string action = EscapeForJsString(WideToUtf8(action_w));
+        std::string value = EscapeForJsString(WideToUtf8(value_w));
+        if (action == "menu") {
+            ExecuteScript(
+                "(function(){try{"
+                "var id=app.findMenuCommandId(\"" + value + "\");"
+                "if(id){app.executeCommand(id);}else{alert('Command not found: " + value + "');}"
+                "}catch(e){alert('Button menu error: '+e.toString());}})();");
+        } else if (action == "expression") {
+            ExecuteScript(
+                "(function(){try{"
+                "var c=app.project.activeItem;"
+                "if(!(c instanceof CompItem)){alert('Open or select a composition first.');return;}"
+                "var props=c.selectedProperties;"
+                "if(!props||props.length===0){alert('Select one or more properties first.');return;}"
+                "app.beginUndoGroup('PersonalBar Expression');"
+                "for(var i=0;i<props.length;i++){if(props[i].canSetExpression){props[i].expression=\"" + value + "\";}}"
+                "app.endUndoGroup();"
+                "}catch(e){try{app.endUndoGroup();}catch(_e){} alert('Button expression error: '+e.toString());}})();");
+        } else if (action == "script") {
+            ExecuteScript(
+                "(function(){try{"
+                + value +
+                "}catch(e){alert('Button script error: '+e.toString());}})();");
+        } else if (action == "scriptfile") {
+            ExecuteScript(
+                "(function(){try{"
+                "var f=File(\"" + value + "\");"
+                "if(!f.exists){alert('Script file not found: '+f.fsName);return;}"
+                "$.evalFile(f);"
+                "}catch(e){alert('Button script file error: '+e.toString());}})();");
+        } else if (action == "scripturl") {
+            ExecuteScript(
+                "(function(){try{"
+                "var url=\"" + value + "\";"
+                "var dir=Folder.userData.fsName + '/PersonalBarQuickApply';"
+                "var folder=Folder(dir); if(!folder.exists){folder.create();}"
+                "var f=File(dir + '/remote-button.jsx');"
+                "var cmd='powershell -NoProfile -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -UseBasicParsing -Uri ' + url + ' -OutFile ' + f.fsName + '\"';"
+                "system.callSystem(cmd);"
+                "if(!f.exists){alert('Could not download script URL.');return;}"
+                "$.evalFile(f);"
+                "}catch(e){alert('Button script URL error: '+e.toString());}})();");
+        } else {
+            MessageBoxW(nullptr, item.name.c_str(), L"Unsupported button action", MB_OK | MB_ICONWARNING);
+        }
     } else {
         MessageBoxW(nullptr, item.name.c_str(), L"Tool action placeholder", MB_OK | MB_ICONINFORMATION);
     }

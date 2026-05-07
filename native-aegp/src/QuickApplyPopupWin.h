@@ -21,3 +21,4 @@ using PBQA_ApplyCallback = std::function<void(const PBQA_ResultItem&)>;
 void PBQA_SetItems(std::vector<PBQA_ResultItem> items);
 void PBQA_SetApplyCallback(PBQA_ApplyCallback callback);
 void PBQA_ShowPopupWindow();
+void PBQA_ReloadCustomButtons();

@@ -18,6 +18,24 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"PersonalBarQuickApplyPopup";
 constexpr wchar_t kEditSubclassProp[] = L"PBQA_EditSubclass";
 
+enum ManagerControlId {
+    IDC_BTN_LIST = 2001,
+    IDC_NAME_EDIT,
+    IDC_TIP_EDIT,
+    IDC_ICON_EDIT,
+    IDC_ACTION_EDIT,
+    IDC_VALUE_EDIT,
+    IDC_NEW_BUTTON,
+    IDC_SAVE_BUTTON,
+    IDC_DELETE_BUTTON,
+    IDC_UP_BUTTON,
+    IDC_DOWN_BUTTON,
+    IDC_SIZE_MINUS,
+    IDC_SIZE_PLUS,
+    IDC_SPACE_MINUS,
+    IDC_SPACE_PLUS
+};
+
 std::vector<PBQA_ResultItem> g_items;
 std::vector<size_t> g_filtered;
 PBQA_ApplyCallback g_apply_callback;
@@ -28,13 +46,33 @@ HWND g_results = nullptr;
 HWND g_tools = nullptr;
 HWND g_buttons = nullptr;
 HWND g_settings = nullptr;
+HWND g_manager = nullptr;
+HWND g_btn_list = nullptr;
+HWND g_name_edit = nullptr;
+HWND g_tip_edit = nullptr;
+HWND g_icon_edit = nullptr;
+HWND g_action_edit = nullptr;
+HWND g_value_edit = nullptr;
 int g_selected = 0;
 HFONT g_font = nullptr;
+HFONT g_small_font = nullptr;
 WNDPROC g_old_edit_proc = nullptr;
 bool g_include_effects = true;
 bool g_include_presets = true;
 bool g_include_commands = true;
 bool g_keep_at_cursor = false;
+int g_button_size = 138;
+int g_button_spacing = 8;
+
+struct CustomButton {
+    std::wstring name;
+    std::wstring tooltip;
+    std::wstring icon;
+    std::wstring action;
+    std::wstring value;
+};
+
+std::vector<CustomButton> g_custom_buttons;
 
 COLORREF kBg = RGB(18, 18, 18);
 COLORREF kPanel = RGB(28, 28, 28);
@@ -59,6 +97,20 @@ void LoadSettings() {
     g_include_presets = GetPrivateProfileIntW(L"Search", L"Presets", 1, path.c_str()) != 0;
     g_include_commands = GetPrivateProfileIntW(L"Search", L"Commands", 1, path.c_str()) != 0;
     g_keep_at_cursor = GetPrivateProfileIntW(L"Search", L"AtCursor", 0, path.c_str()) != 0;
+    g_button_size = GetPrivateProfileIntW(L"Toolbar", L"ButtonSize", 138, path.c_str());
+    g_button_spacing = GetPrivateProfileIntW(L"Toolbar", L"Spacing", 8, path.c_str());
+    if (g_button_size < 72) {
+        g_button_size = 72;
+    }
+    if (g_button_size > 260) {
+        g_button_size = 260;
+    }
+    if (g_button_spacing < 0) {
+        g_button_spacing = 0;
+    }
+    if (g_button_spacing > 32) {
+        g_button_spacing = 32;
+    }
 }
 
 std::wstring FavoriteKey(const PBQA_ResultItem& item) {
@@ -92,6 +144,67 @@ void SaveSettings() {
     WritePrivateProfileStringW(L"Search", L"Presets", g_include_presets ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Search", L"Commands", g_include_commands ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Search", L"AtCursor", g_keep_at_cursor ? L"1" : L"0", path.c_str());
+    wchar_t num[32] = {};
+    wsprintfW(num, L"%d", g_button_size);
+    WritePrivateProfileStringW(L"Toolbar", L"ButtonSize", num, path.c_str());
+    wsprintfW(num, L"%d", g_button_spacing);
+    WritePrivateProfileStringW(L"Toolbar", L"Spacing", num, path.c_str());
+}
+
+std::wstring ReadIniString(const wchar_t* section, const wchar_t* key, const wchar_t* fallback = L"") {
+    wchar_t buffer[8192] = {};
+    GetPrivateProfileStringW(section, key, fallback, buffer, 8192, SettingsPath().c_str());
+    return buffer;
+}
+
+void WriteIniString(const wchar_t* section, const wchar_t* key, const std::wstring& value) {
+    WritePrivateProfileStringW(section, key, value.c_str(), SettingsPath().c_str());
+}
+
+void LoadCustomButtons() {
+    LoadSettings();
+    g_custom_buttons.clear();
+    int count = GetPrivateProfileIntW(L"Toolbar", L"Count", 0, SettingsPath().c_str());
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > 64) {
+        count = 64;
+    }
+    for (int i = 0; i < count; ++i) {
+        wchar_t section[32] = {};
+        wsprintfW(section, L"Button%d", i);
+        CustomButton button;
+        button.name = ReadIniString(section, L"Name");
+        button.tooltip = ReadIniString(section, L"Tooltip");
+        button.icon = ReadIniString(section, L"Icon", L"zap");
+        button.action = ReadIniString(section, L"Action", L"menu");
+        button.value = ReadIniString(section, L"Value");
+        if (!button.name.empty()) {
+            g_custom_buttons.push_back(button);
+        }
+    }
+}
+
+void SaveCustomButtons() {
+    SaveSettings();
+    wchar_t num[32] = {};
+    wsprintfW(num, L"%d", static_cast<int>(g_custom_buttons.size()));
+    WritePrivateProfileStringW(L"Toolbar", L"Count", num, SettingsPath().c_str());
+    for (int i = 0; i < 64; ++i) {
+        wchar_t section[32] = {};
+        wsprintfW(section, L"Button%d", i);
+        if (i >= static_cast<int>(g_custom_buttons.size())) {
+            WritePrivateProfileStringW(section, nullptr, nullptr, SettingsPath().c_str());
+            continue;
+        }
+        const CustomButton& button = g_custom_buttons[static_cast<size_t>(i)];
+        WriteIniString(section, L"Name", button.name);
+        WriteIniString(section, L"Tooltip", button.tooltip);
+        WriteIniString(section, L"Icon", button.icon);
+        WriteIniString(section, L"Action", button.action);
+        WriteIniString(section, L"Value", button.value);
+    }
 }
 
 bool KindEnabled(const std::wstring& kind) {
@@ -213,6 +326,100 @@ void HideSettings() {
     }
 }
 
+std::wstring WindowText(HWND hwnd) {
+    int len = GetWindowTextLengthW(hwnd);
+    if (len <= 0) {
+        return L"";
+    }
+    std::wstring out(static_cast<size_t>(len), L'\0');
+    GetWindowTextW(hwnd, &out[0], len + 1);
+    return out;
+}
+
+void RefreshManagerList() {
+    if (!g_btn_list) {
+        return;
+    }
+    SendMessageW(g_btn_list, LB_RESETCONTENT, 0, 0);
+    for (const auto& button : g_custom_buttons) {
+        std::wstring label = button.name + L"    [" + button.action + L"]";
+        SendMessageW(g_btn_list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+    }
+}
+
+int SelectedManagerIndex() {
+    if (!g_btn_list) {
+        return -1;
+    }
+    return static_cast<int>(SendMessageW(g_btn_list, LB_GETCURSEL, 0, 0));
+}
+
+void LoadManagerFields(int index) {
+    if (index < 0 || index >= static_cast<int>(g_custom_buttons.size())) {
+        SetWindowTextW(g_name_edit, L"");
+        SetWindowTextW(g_tip_edit, L"");
+        SetWindowTextW(g_icon_edit, L"zap");
+        SetWindowTextW(g_action_edit, L"menu");
+        SetWindowTextW(g_value_edit, L"");
+        return;
+    }
+    const CustomButton& button = g_custom_buttons[static_cast<size_t>(index)];
+    SetWindowTextW(g_name_edit, button.name.c_str());
+    SetWindowTextW(g_tip_edit, button.tooltip.c_str());
+    SetWindowTextW(g_icon_edit, button.icon.c_str());
+    SetWindowTextW(g_action_edit, button.action.c_str());
+    SetWindowTextW(g_value_edit, button.value.c_str());
+}
+
+void SaveManagerFields(int index) {
+    CustomButton button;
+    button.name = WindowText(g_name_edit);
+    button.tooltip = WindowText(g_tip_edit);
+    button.icon = WindowText(g_icon_edit);
+    button.action = Lower(WindowText(g_action_edit));
+    button.value = WindowText(g_value_edit);
+    if (button.name.empty()) {
+        button.name = L"Untitled";
+    }
+    if (button.icon.empty()) {
+        button.icon = L"zap";
+    }
+    if (button.action.empty()) {
+        button.action = L"menu";
+    }
+
+    if (index < 0 || index >= static_cast<int>(g_custom_buttons.size())) {
+        g_custom_buttons.push_back(button);
+        index = static_cast<int>(g_custom_buttons.size()) - 1;
+    } else {
+        g_custom_buttons[static_cast<size_t>(index)] = button;
+    }
+    SaveCustomButtons();
+    RefreshManagerList();
+    SendMessageW(g_btn_list, LB_SETCURSEL, index, 0);
+    if (g_buttons) {
+        InvalidateRect(g_buttons, nullptr, TRUE);
+    }
+}
+
+void ShowManager() {
+    if (!g_manager) {
+        return;
+    }
+    LoadCustomButtons();
+    RefreshManagerList();
+    LoadManagerFields(SelectedManagerIndex());
+    RECT work = {};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    int w = 760;
+    int h = 520;
+    int x = work.left + ((work.right - work.left) - w) / 2;
+    int y = work.top + 130;
+    SetWindowPos(g_manager, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW);
+    ShowWindow(g_manager, SW_SHOWNORMAL);
+    SetForegroundWindow(g_manager);
+}
+
 std::vector<size_t> ButtonItems() {
     std::vector<size_t> out;
     for (size_t i = 0; i < g_items.size() && out.size() < 9; ++i) {
@@ -223,12 +430,32 @@ std::vector<size_t> ButtonItems() {
     return out;
 }
 
+PBQA_ResultItem CustomToItem(const CustomButton& button) {
+    PBQA_ResultItem item;
+    item.name = button.name;
+    item.detail = button.tooltip.empty() ? L"PersonalBar Button" : button.tooltip;
+    item.action_label = L"Run";
+    item.kind = L"Custom";
+    item.payload = button.action + L"\n" + button.value;
+    return item;
+}
+
 void ApplyButton(int index) {
     auto buttons = ButtonItems();
-    if (index < 0 || index >= static_cast<int>(buttons.size())) {
+    int tool_count = static_cast<int>(buttons.size());
+    if (index < 0) {
         return;
     }
-    PBQA_ResultItem item = g_items[buttons[static_cast<size_t>(index)]];
+    PBQA_ResultItem item;
+    if (index < tool_count) {
+        item = g_items[buttons[static_cast<size_t>(index)]];
+    } else {
+        int custom_index = index - tool_count;
+        if (custom_index < 0 || custom_index >= static_cast<int>(g_custom_buttons.size())) {
+            return;
+        }
+        item = CustomToItem(g_custom_buttons[static_cast<size_t>(custom_index)]);
+    }
     ShowWindow(g_hwnd, SW_HIDE);
     if (g_apply_callback) {
         g_apply_callback(item);
@@ -276,14 +503,7 @@ LRESULT CALLBACK ToolsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         return 0;
     }
     if (msg == WM_LBUTTONDOWN) {
-        if (g_settings && IsWindowVisible(g_settings)) {
-            ShowWindow(g_settings, SW_HIDE);
-        } else if (g_settings) {
-            RECT window_rc = {};
-            GetWindowRect(g_hwnd, &window_rc);
-            SetWindowPos(g_settings, HWND_TOPMOST, window_rc.left + 13, window_rc.top + 55, 330, 174, 0);
-            ShowWindow(g_settings, SW_SHOWNORMAL);
-        }
+        ShowManager();
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -299,6 +519,9 @@ const wchar_t* KindIcon(const PBQA_ResultItem& item) {
     if (item.kind == L"Command") {
         return L"|||";
     }
+    if (item.kind == L"Custom") {
+        return L"*";
+    }
     return L"\u25c6";
 }
 
@@ -312,7 +535,25 @@ COLORREF KindAccent(const PBQA_ResultItem& item) {
     if (item.kind == L"Command") {
         return RGB(170, 170, 170);
     }
+    if (item.kind == L"Custom") {
+        return RGB(255, 190, 80);
+    }
     return RGB(75, 235, 205);
+}
+
+std::wstring ButtonIcon(const CustomButton& button) {
+    if (button.icon == L"camera") return L"CAM";
+    if (button.icon == L"search") return L"SEA";
+    if (button.icon == L"scissors") return L"CUT";
+    if (button.icon == L"film") return L"FILM";
+    if (button.icon == L"trash") return L"DEL";
+    if (button.icon == L"wand") return L"MAG";
+    if (button.icon == L"zap") return L"ZAP";
+    if (button.icon == L"play") return L"RUN";
+    if (button.icon == L"box") return L"BOX";
+    if (button.icon == L"code") return L"JS";
+    if (button.icon.empty()) return L"*";
+    return button.icon.substr(0, std::min<size_t>(4, button.icon.size()));
 }
 
 void DrawButtonStripButton(HDC hdc, RECT rc, const PBQA_ResultItem& item, int number) {
@@ -337,6 +578,28 @@ void DrawButtonStripButton(HDC hdc, RECT rc, const PBQA_ResultItem& item, int nu
     DrawTextW(hdc, item.name.c_str(), -1, &label_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 }
 
+void DrawCustomStripButton(HDC hdc, RECT rc, const CustomButton& button) {
+    HBRUSH bg = CreateSolidBrush(RGB(31, 31, 31));
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(64, 64, 64));
+    HGDIOBJ old_brush = SelectObject(hdc, bg);
+    HGDIOBJ old_pen = SelectObject(hdc, pen);
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 6, 6);
+    SelectObject(hdc, old_pen);
+    SelectObject(hdc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(bg);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(255, 190, 80));
+    RECT icon_rc = {rc.left + 8, rc.top + 5, rc.left + 50, rc.bottom - 5};
+    std::wstring icon = ButtonIcon(button);
+    DrawTextW(hdc, icon.c_str(), -1, &icon_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SetTextColor(hdc, RGB(235, 235, 235));
+    RECT label_rc = {rc.left + 52, rc.top + 5, rc.right - 10, rc.bottom - 5};
+    DrawTextW(hdc, button.name.c_str(), -1, &label_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+}
+
 LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
         case WM_PAINT: {
@@ -351,14 +614,23 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             SelectObject(hdc, g_font);
             auto buttons = ButtonItems();
             int x = 0;
-            const int gap = 8;
+            const int gap = g_button_spacing;
             for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = (g_items[buttons[i]].kind == L"Tool") ? 164 : 138;
+                int bw = std::max(96, g_button_size);
                 if (x + bw > rc.right) {
                     break;
                 }
                 RECT brc = {x, 4, x + bw, rc.bottom - 4};
                 DrawButtonStripButton(hdc, brc, g_items[buttons[i]], i + 1);
+                x += bw + gap;
+            }
+            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
+                int bw = std::max(72, g_button_size);
+                if (x + bw > rc.right) {
+                    break;
+                }
+                RECT brc = {x, 4, x + bw, rc.bottom - 4};
+                DrawCustomStripButton(hdc, brc, g_custom_buttons[static_cast<size_t>(i)]);
                 x += bw + gap;
             }
             EndPaint(hwnd, &ps);
@@ -369,11 +641,20 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             auto buttons = ButtonItems();
             int x = 0;
             int px = GET_X_LPARAM(lparam);
-            const int gap = 8;
+            const int gap = g_button_spacing;
             for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = (g_items[buttons[i]].kind == L"Tool") ? 164 : 138;
+                int bw = std::max(96, g_button_size);
                 if (px >= x && px < x + bw) {
                     ApplyButton(i);
+                    return 0;
+                }
+                x += bw + gap;
+            }
+            int tool_count = static_cast<int>(buttons.size());
+            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
+                int bw = std::max(72, g_button_size);
+                if (px >= x && px < x + bw) {
+                    ApplyButton(tool_count + i);
                     return 0;
                 }
                 x += bw + gap;
@@ -386,9 +667,9 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             auto buttons = ButtonItems();
             int x = 0;
             int px = GET_X_LPARAM(lparam);
-            const int gap = 8;
+            const int gap = g_button_spacing;
             for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = (g_items[buttons[i]].kind == L"Tool") ? 164 : 138;
+                int bw = std::max(96, g_button_size);
                 if (px >= x && px < x + bw) {
                     PBQA_ResultItem& item = g_items[buttons[i]];
                     if (!item.favorite) {
@@ -411,6 +692,34 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 x += bw + gap;
             }
             SetFocus(g_edit);
+            return 0;
+        }
+        case WM_MOUSEMOVE: {
+            auto buttons = ButtonItems();
+            int x = 0;
+            int px = GET_X_LPARAM(lparam);
+            const int gap = g_button_spacing;
+            for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+                int bw = std::max(96, g_button_size);
+                if (px >= x && px < x + bw) {
+                    std::wstring tip = g_items[buttons[static_cast<size_t>(i)]].detail;
+                    SetWindowTextW(hwnd, tip.c_str());
+                    return 0;
+                }
+                x += bw + gap;
+            }
+            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
+                int bw = std::max(72, g_button_size);
+                if (px >= x && px < x + bw) {
+                    std::wstring tip = g_custom_buttons[static_cast<size_t>(i)].tooltip.empty()
+                        ? g_custom_buttons[static_cast<size_t>(i)].name
+                        : g_custom_buttons[static_cast<size_t>(i)].tooltip;
+                    SetWindowTextW(hwnd, tip.c_str());
+                    return 0;
+                }
+                x += bw + gap;
+            }
+            SetWindowTextW(hwnd, L"");
             return 0;
         }
     }
@@ -631,6 +940,168 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
+void AddStatic(HWND parent, const wchar_t* text, int x, int y, int w, int h) {
+    HWND label = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+    SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font ? g_small_font : g_font), TRUE);
+}
+
+HWND AddEdit(HWND parent, int id, int x, int y, int w, int h, DWORD extra_style = 0) {
+    HWND edit = CreateWindowExW(
+        WS_EX_CLIENTEDGE,
+        L"EDIT",
+        L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | extra_style,
+        x, y, w, h,
+        parent,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+        GetModuleHandleW(nullptr),
+        nullptr);
+    SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font ? g_small_font : g_font), TRUE);
+    return edit;
+}
+
+HWND AddButton(HWND parent, int id, const wchar_t* text, int x, int y, int w, int h) {
+    HWND btn = CreateWindowExW(
+        0,
+        L"BUTTON",
+        text,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        x, y, w, h,
+        parent,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+        GetModuleHandleW(nullptr),
+        nullptr);
+    SendMessageW(btn, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font ? g_small_font : g_font), TRUE);
+    return btn;
+}
+
+LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    switch (msg) {
+        case WM_CREATE: {
+            g_small_font = CreateFontW(
+                -16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+
+            g_btn_list = CreateWindowExW(
+                WS_EX_CLIENTEDGE,
+                L"LISTBOX",
+                L"",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL,
+                18, 38, 270, 360,
+                hwnd,
+                reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_LIST)),
+                GetModuleHandleW(nullptr),
+                nullptr);
+            SendMessageW(g_btn_list, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font), TRUE);
+
+            AddStatic(hwnd, L"Buttons", 18, 14, 200, 20);
+            AddStatic(hwnd, L"Name", 310, 18, 120, 20);
+            g_name_edit = AddEdit(hwnd, IDC_NAME_EDIT, 405, 14, 320, 26);
+            AddStatic(hwnd, L"Tooltip", 310, 52, 120, 20);
+            g_tip_edit = AddEdit(hwnd, IDC_TIP_EDIT, 405, 48, 320, 26);
+            AddStatic(hwnd, L"Icon", 310, 86, 120, 20);
+            g_icon_edit = AddEdit(hwnd, IDC_ICON_EDIT, 405, 82, 160, 26);
+            AddStatic(hwnd, L"Action", 310, 120, 120, 20);
+            g_action_edit = AddEdit(hwnd, IDC_ACTION_EDIT, 405, 116, 160, 26);
+            AddStatic(hwnd, L"Value", 310, 154, 120, 20);
+            g_value_edit = AddEdit(hwnd, IDC_VALUE_EDIT, 405, 150, 320, 170, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL);
+
+            AddStatic(hwnd, L"Action: menu, expression, script, scriptfile", 405, 326, 330, 22);
+            AddStatic(hwnd, L"Icons: camera, search, scissors, film, trash, wand, zap, play, box, code", 405, 350, 330, 38);
+
+            AddButton(hwnd, IDC_NEW_BUTTON, L"New", 18, 412, 62, 30);
+            AddButton(hwnd, IDC_SAVE_BUTTON, L"Save", 86, 412, 62, 30);
+            AddButton(hwnd, IDC_DELETE_BUTTON, L"Delete", 154, 412, 70, 30);
+            AddButton(hwnd, IDC_UP_BUTTON, L"Up", 230, 412, 58, 30);
+            AddButton(hwnd, IDC_DOWN_BUTTON, L"Down", 18, 448, 76, 30);
+
+            AddStatic(hwnd, L"Button size", 310, 404, 110, 22);
+            AddButton(hwnd, IDC_SIZE_MINUS, L"-", 405, 400, 34, 30);
+            AddButton(hwnd, IDC_SIZE_PLUS, L"+", 445, 400, 34, 30);
+            AddStatic(hwnd, L"Spacing", 500, 404, 80, 22);
+            AddButton(hwnd, IDC_SPACE_MINUS, L"-", 570, 400, 34, 30);
+            AddButton(hwnd, IDC_SPACE_PLUS, L"+", 610, 400, 34, 30);
+            AddButton(hwnd, IDCANCEL, L"Close", 650, 448, 76, 30);
+
+            return 0;
+        }
+
+        case WM_COMMAND: {
+            int id = LOWORD(wparam);
+            if (id == IDC_BTN_LIST && HIWORD(wparam) == LBN_SELCHANGE) {
+                LoadManagerFields(SelectedManagerIndex());
+                return 0;
+            }
+            if (id == IDC_NEW_BUTTON) {
+                SendMessageW(g_btn_list, LB_SETCURSEL, static_cast<WPARAM>(-1), 0);
+                LoadManagerFields(-1);
+                SetWindowTextW(g_name_edit, L"New Button");
+                SetWindowTextW(g_icon_edit, L"zap");
+                SetWindowTextW(g_action_edit, L"menu");
+                SetFocus(g_name_edit);
+                return 0;
+            }
+            if (id == IDC_SAVE_BUTTON) {
+                SaveManagerFields(SelectedManagerIndex());
+                return 0;
+            }
+            if (id == IDC_DELETE_BUTTON) {
+                int index = SelectedManagerIndex();
+                if (index >= 0 && index < static_cast<int>(g_custom_buttons.size())) {
+                    g_custom_buttons.erase(g_custom_buttons.begin() + index);
+                    SaveCustomButtons();
+                    RefreshManagerList();
+                    LoadManagerFields(-1);
+                    if (g_buttons) {
+                        InvalidateRect(g_buttons, nullptr, TRUE);
+                    }
+                }
+                return 0;
+            }
+            if (id == IDC_UP_BUTTON || id == IDC_DOWN_BUTTON) {
+                int index = SelectedManagerIndex();
+                int next = id == IDC_UP_BUTTON ? index - 1 : index + 1;
+                if (index >= 0 && next >= 0 && next < static_cast<int>(g_custom_buttons.size())) {
+                    std::swap(g_custom_buttons[static_cast<size_t>(index)], g_custom_buttons[static_cast<size_t>(next)]);
+                    SaveCustomButtons();
+                    RefreshManagerList();
+                    SendMessageW(g_btn_list, LB_SETCURSEL, next, 0);
+                    if (g_buttons) {
+                        InvalidateRect(g_buttons, nullptr, TRUE);
+                    }
+                }
+                return 0;
+            }
+            if (id == IDC_SIZE_MINUS || id == IDC_SIZE_PLUS || id == IDC_SPACE_MINUS || id == IDC_SPACE_PLUS) {
+                if (id == IDC_SIZE_MINUS) g_button_size -= 8;
+                if (id == IDC_SIZE_PLUS) g_button_size += 8;
+                if (id == IDC_SPACE_MINUS) g_button_spacing -= 2;
+                if (id == IDC_SPACE_PLUS) g_button_spacing += 2;
+                if (g_button_size < 72) g_button_size = 72;
+                if (g_button_size > 260) g_button_size = 260;
+                if (g_button_spacing < 0) g_button_spacing = 0;
+                if (g_button_spacing > 32) g_button_spacing = 32;
+                SaveSettings();
+                if (g_buttons) {
+                    InvalidateRect(g_buttons, nullptr, TRUE);
+                }
+                return 0;
+            }
+            if (id == IDCANCEL) {
+                ShowWindow(hwnd, SW_HIDE);
+                return 0;
+            }
+            break;
+        }
+
+        case WM_CLOSE:
+            ShowWindow(hwnd, SW_HIDE);
+            return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
 LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_LBUTTONDOWN || msg == WM_SETFOCUS) {
         HideSettings();
@@ -670,6 +1141,7 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             g_buttons = CreateWindowExW(0, L"PBQA_Buttons", L"", WS_CHILD | WS_VISIBLE, 13, 64, 696, 44, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_results = CreateWindowExW(0, L"PBQA_Results", L"", WS_CHILD | WS_VISIBLE, 13, 116, 696, 310, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_settings = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Settings", L"", WS_POPUP, 0, 0, 330, 174, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_manager = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Manager", L"PersonalBar Settings", WS_POPUP | WS_CAPTION | WS_SYSMENU, 0, 0, 760, 520, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
 
             SendMessageW(g_edit, WM_SETFONT, reinterpret_cast<WPARAM>(g_font), TRUE);
             SendMessageW(g_edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search effects, presets, commands, tools..."));
@@ -739,6 +1211,10 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 DeleteObject(g_font);
                 g_font = nullptr;
             }
+            if (g_small_font) {
+                DeleteObject(g_small_font);
+                g_small_font = nullptr;
+            }
             return 0;
     }
 
@@ -791,6 +1267,14 @@ void RegisterClassOnce() {
     settings.hbrBackground = CreateSolidBrush(RGB(25, 25, 25));
     RegisterClassW(&settings);
 
+    WNDCLASSW manager = {};
+    manager.lpfnWndProc = ManagerProc;
+    manager.hInstance = GetModuleHandleW(nullptr);
+    manager.lpszClassName = L"PBQA_Manager";
+    manager.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    manager.hbrBackground = CreateSolidBrush(RGB(28, 28, 28));
+    RegisterClassW(&manager);
+
     registered = true;
 }
 
@@ -798,6 +1282,7 @@ void RegisterClassOnce() {
 
 void PBQA_SetItems(std::vector<PBQA_ResultItem> items) {
     LoadSettings();
+    LoadCustomButtons();
     g_items = std::move(items);
     MarkFavorites();
     FilterItems();
@@ -810,6 +1295,7 @@ void PBQA_SetApplyCallback(PBQA_ApplyCallback callback) {
 void PBQA_ShowPopupWindow() {
     RegisterClassOnce();
     LoadSettings();
+    LoadCustomButtons();
 
     if (!g_hwnd) {
         g_hwnd = CreateWindowExW(
@@ -845,5 +1331,12 @@ void PBQA_ShowPopupWindow() {
             ShowWindow(g_settings, SW_HIDE);
         }
         SetFocus(g_edit);
+    }
+}
+
+void PBQA_ReloadCustomButtons() {
+    LoadCustomButtons();
+    if (g_buttons) {
+        InvalidateRect(g_buttons, nullptr, TRUE);
     }
 }

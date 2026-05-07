@@ -55,6 +55,17 @@ HWND g_icon_edit = nullptr;
 HWND g_color_edit = nullptr;
 HWND g_action_edit = nullptr;
 HWND g_value_edit = nullptr;
+HWND g_lbl_buttons = nullptr;
+HWND g_lbl_name = nullptr;
+HWND g_lbl_tip = nullptr;
+HWND g_lbl_icon = nullptr;
+HWND g_lbl_color = nullptr;
+HWND g_lbl_action = nullptr;
+HWND g_lbl_value = nullptr;
+HWND g_lbl_help_actions = nullptr;
+HWND g_lbl_help_icons = nullptr;
+HWND g_lbl_size = nullptr;
+HWND g_lbl_spacing = nullptr;
 int g_selected = 0;
 HFONT g_font = nullptr;
 HFONT g_small_font = nullptr;
@@ -1013,9 +1024,10 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
-void AddStatic(HWND parent, const wchar_t* text, int x, int y, int w, int h) {
+HWND AddStatic(HWND parent, const wchar_t* text, int x, int y, int w, int h) {
     HWND label = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
     SendMessageW(label, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font ? g_small_font : g_font), TRUE);
+    return label;
 }
 
 HWND AddEdit(HWND parent, int id, int x, int y, int w, int h, DWORD extra_style = 0) {
@@ -1068,22 +1080,22 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 nullptr);
             SendMessageW(g_btn_list, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font), TRUE);
 
-            AddStatic(hwnd, L"BUTTONS", 18, 14, 200, 20);
-            AddStatic(hwnd, L"Name", 310, 18, 120, 20);
+            g_lbl_buttons = AddStatic(hwnd, L"BUTTONS", 18, 14, 200, 20);
+            g_lbl_name = AddStatic(hwnd, L"Name", 310, 18, 120, 20);
             g_name_edit = AddEdit(hwnd, IDC_NAME_EDIT, 405, 14, 320, 26);
-            AddStatic(hwnd, L"Tooltip", 310, 52, 120, 20);
+            g_lbl_tip = AddStatic(hwnd, L"Tooltip", 310, 52, 120, 20);
             g_tip_edit = AddEdit(hwnd, IDC_TIP_EDIT, 405, 48, 320, 26);
-            AddStatic(hwnd, L"Icon", 310, 86, 120, 20);
+            g_lbl_icon = AddStatic(hwnd, L"Icon", 310, 86, 120, 20);
             g_icon_edit = AddEdit(hwnd, IDC_ICON_EDIT, 405, 82, 160, 26);
-            AddStatic(hwnd, L"Color", 575, 86, 80, 20);
+            g_lbl_color = AddStatic(hwnd, L"Color", 575, 86, 80, 20);
             g_color_edit = AddEdit(hwnd, IDC_COLOR_EDIT, 635, 82, 90, 26);
-            AddStatic(hwnd, L"Action", 310, 120, 120, 20);
+            g_lbl_action = AddStatic(hwnd, L"Action", 310, 120, 120, 20);
             g_action_edit = AddEdit(hwnd, IDC_ACTION_EDIT, 405, 116, 160, 26);
-            AddStatic(hwnd, L"Value", 310, 154, 120, 20);
+            g_lbl_value = AddStatic(hwnd, L"Value", 310, 154, 120, 20);
             g_value_edit = AddEdit(hwnd, IDC_VALUE_EDIT, 405, 150, 320, 170, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL);
 
-            AddStatic(hwnd, L"Actions: menu, expression, preset, script, scriptfile", 405, 326, 370, 22);
-            AddStatic(hwnd, L"Icons: camera, search, scissors, film, trash, wand, zap, play, box, code", 405, 350, 370, 38);
+            g_lbl_help_actions = AddStatic(hwnd, L"Actions: menu, expression, preset, script, scriptfile", 405, 326, 370, 22);
+            g_lbl_help_icons = AddStatic(hwnd, L"Icons: camera, search, scissors, film, trash, wand, zap, play, box, code", 405, 350, 370, 38);
 
             AddButton(hwnd, IDC_NEW_BUTTON, L"Add Button", 18, 412, 112, 30);
             AddButton(hwnd, IDC_SAVE_BUTTON, L"Save", 138, 412, 70, 30);
@@ -1091,10 +1103,10 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             AddButton(hwnd, IDC_UP_BUTTON, L"Up", 18, 448, 58, 30);
             AddButton(hwnd, IDC_DOWN_BUTTON, L"Down", 84, 448, 76, 30);
 
-            AddStatic(hwnd, L"Button size", 310, 404, 110, 22);
+            g_lbl_size = AddStatic(hwnd, L"Button size", 310, 404, 110, 22);
             AddButton(hwnd, IDC_SIZE_MINUS, L"-", 405, 400, 34, 30);
             AddButton(hwnd, IDC_SIZE_PLUS, L"+", 445, 400, 34, 30);
-            AddStatic(hwnd, L"Spacing", 500, 404, 80, 22);
+            g_lbl_spacing = AddStatic(hwnd, L"Spacing", 500, 404, 80, 22);
             AddButton(hwnd, IDC_SPACE_MINUS, L"-", 570, 400, 34, 30);
             AddButton(hwnd, IDC_SPACE_PLUS, L"+", 610, 400, 34, 30);
             AddButton(hwnd, IDCANCEL, L"Close", 650, 448, 76, 30);
@@ -1115,14 +1127,65 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         case WM_SIZE: {
             int w = LOWORD(lparam);
             int h = HIWORD(lparam);
-            int left_w = std::max(260, w / 3);
-            MoveWindow(g_btn_list, 18, 38, left_w - 36, std::max(160, h - 160), TRUE);
-            MoveWindow(g_name_edit, left_w + 110, 14, std::max(180, w - left_w - 140), 26, TRUE);
-            MoveWindow(g_tip_edit, left_w + 110, 48, std::max(180, w - left_w - 140), 26, TRUE);
-            MoveWindow(g_icon_edit, left_w + 110, 82, 160, 26, TRUE);
-            MoveWindow(g_color_edit, left_w + 340, 82, std::max(90, w - left_w - 370), 26, TRUE);
-            MoveWindow(g_action_edit, left_w + 110, 116, 160, 26, TRUE);
-            MoveWindow(g_value_edit, left_w + 110, 150, std::max(180, w - left_w - 140), std::max(120, h - 300), TRUE);
+            int margin = 22;
+            int gutter = 28;
+            int footer_h = 74;
+            int left_w = std::max(300, std::min(430, w / 3));
+            int list_top = 50;
+            int list_bottom = std::max(list_top + 150, h - footer_h - 22);
+            int footer_y = list_bottom + 14;
+
+            int right_x = left_w + gutter;
+            int label_w = 96;
+            int field_x = right_x + label_w + 12;
+            int field_w = std::max(220, w - field_x - margin);
+            int row_h = 28;
+            int icon_w = std::max(120, field_w / 2 - 44);
+            int color_x = field_x + icon_w + 72;
+            int color_w = std::max(120, w - color_x - margin);
+            int value_top = 190;
+            int value_bottom = std::max(value_top + 160, h - 156);
+
+            MoveWindow(g_lbl_buttons, margin, 24, left_w - margin * 2, 22, TRUE);
+            MoveWindow(g_btn_list, margin, list_top, left_w - margin * 2, list_bottom - list_top, TRUE);
+
+            MoveWindow(GetDlgItem(hwnd, IDC_NEW_BUTTON), margin, footer_y, 112, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SAVE_BUTTON), margin + 122, footer_y, 70, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_DELETE_BUTTON), margin + 202, footer_y, 76, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_UP_BUTTON), margin, footer_y + 36, 58, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_DOWN_BUTTON), margin + 68, footer_y + 36, 76, 30, TRUE);
+
+            MoveWindow(g_lbl_name, right_x, 24, label_w, 22, TRUE);
+            MoveWindow(g_name_edit, field_x, 20, field_w, row_h, TRUE);
+            MoveWindow(g_lbl_tip, right_x, 62, label_w, 22, TRUE);
+            MoveWindow(g_tip_edit, field_x, 58, field_w, row_h, TRUE);
+            MoveWindow(g_lbl_icon, right_x, 100, label_w, 22, TRUE);
+            MoveWindow(g_icon_edit, field_x, 96, icon_w, row_h, TRUE);
+            MoveWindow(g_lbl_color, field_x + icon_w + 18, 100, 54, 22, TRUE);
+            MoveWindow(g_color_edit, color_x, 96, color_w, row_h, TRUE);
+            MoveWindow(g_lbl_action, right_x, 138, label_w, 22, TRUE);
+            MoveWindow(g_action_edit, field_x, 134, std::min(220, field_w), row_h, TRUE);
+            MoveWindow(g_lbl_value, right_x, value_top + 4, label_w, 22, TRUE);
+            MoveWindow(g_value_edit, field_x, value_top, field_w, value_bottom - value_top, TRUE);
+
+            MoveWindow(g_lbl_help_actions, field_x, value_bottom + 12, field_w, 22, TRUE);
+            MoveWindow(g_lbl_help_icons, field_x, value_bottom + 36, field_w, 42, TRUE);
+
+            int settings_y = std::max(value_bottom + 88, h - 58);
+            MoveWindow(g_lbl_size, right_x, settings_y + 4, 96, 22, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_MINUS), right_x + 100, settings_y, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_PLUS), right_x + 140, settings_y, 34, 30, TRUE);
+            MoveWindow(g_lbl_spacing, right_x + 198, settings_y + 4, 72, 22, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_MINUS), right_x + 270, settings_y, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_PLUS), right_x + 310, settings_y, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDCANCEL), w - margin - 82, settings_y, 82, 30, TRUE);
+            return 0;
+        }
+
+        case WM_GETMINMAXINFO: {
+            auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+            info->ptMinTrackSize.x = 820;
+            info->ptMinTrackSize.y = 620;
             return 0;
         }
 
@@ -1139,8 +1202,9 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 AppendMenuW(menu, MF_STRING, 3, L"Apply Preset");
                 AppendMenuW(menu, MF_STRING, 4, L"Run Scriptlet");
                 AppendMenuW(menu, MF_STRING, 5, L"Run JSX/JSXBIN File");
-                POINT pt = {18, 446};
-                ClientToScreen(hwnd, &pt);
+                RECT add_rc = {};
+                GetWindowRect(GetDlgItem(hwnd, IDC_NEW_BUTTON), &add_rc);
+                POINT pt = {add_rc.left, add_rc.bottom + 4};
                 int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
                 DestroyMenu(menu);
                 if (!cmd) {

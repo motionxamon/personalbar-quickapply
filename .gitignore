@@ -1,0 +1,24 @@
+# Build outputs
+native-aegp/build/
+native-aegp/build-*/
+*.aex
+*.exp
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.res
+
+# Generated PiPL resources
+native-aegp/src/QuickApplyPlus_PiPL_temp.rc
+
+# Adobe SDK / extracted vendor payloads
+native-aegp/third_party/
+
+# Local editor / OS noise
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini

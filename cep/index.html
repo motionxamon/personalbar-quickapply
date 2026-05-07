@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>PersonalBar</title>
+    <link rel="stylesheet" href="./css/main.css">
+</head>
+<body>
+    <div class="panel" id="panel">
+        <header class="topbar">
+            <button class="toolbar-picker" id="toolbarPicker" title="Choose toolbar">
+                <span class="chevron">&#8250;</span>
+                <span id="toolbarName">Working</span>
+            </button>
+            <button class="chrome-button" id="searchBtn" title="Quick search">?</button>
+            <button class="chrome-button" id="settingsBtn" title="Toolbar settings">&#9881;</button>
+            <button class="chrome-button" id="reloadBtn" title="Reload host script">&#8635;</button>
+        </header>
+
+        <div class="toolbar-menu hidden" id="toolbarMenu"></div>
+        <main class="button-grid" id="buttonGrid"></main>
+        <footer class="status" id="status">Ready</footer>
+    </div>
+
+    <section class="overlay hidden" id="searchOverlay">
+        <div class="quick-box">
+            <input id="quickInput" type="text" placeholder="Search buttons, scripts, expressions...">
+            <div class="quick-results" id="quickResults"></div>
+        </div>
+    </section>
+
+    <section class="overlay hidden" id="settingsOverlay">
+        <div class="settings-box">
+            <header class="settings-header">
+                <strong id="settingsTitle">Working</strong>
+                <button class="chrome-button" id="closeSettingsBtn">&#215;</button>
+            </header>
+            <div class="settings-actions">
+                <button class="action-button" id="addButtonBtn">Add Button</button>
+            </div>
+            <div class="settings-list" id="settingsList"></div>
+        </div>
+    </section>
+
+    <section class="overlay hidden" id="buttonOverlay">
+        <div class="settings-box compact">
+            <header class="settings-header">
+                <strong>Add Button</strong>
+                <button class="chrome-button" id="closeButtonBtn">&#215;</button>
+            </header>
+            <label class="field">
+                <span>Name</span>
+                <input id="newName" type="text" value="New Button">
+            </label>
+            <label class="field">
+                <span>Icon text</span>
+                <input id="newLabel" type="text" value="NEW">
+            </label>
+            <label class="field">
+                <span>Color</span>
+                <input id="newColor" type="text" value="rgba(80, 227, 194, 1)">
+            </label>
+            <label class="field">
+                <span>Action</span>
+                <select id="newKind">
+                    <option value="externalScript">Run jsx/jsbin file path</option>
+                    <option value="scriptlet">Run inline jsx/scriptlet</option>
+                    <option value="expression">Set expression</option>
+                    <option value="menuCommand">Invoke menu item</option>
+                    <option value="presetExternal">Apply preset file</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Value</span>
+                <textarea id="newValue" rows="7" placeholder="File path, expression, menu command, or inline jsx"></textarea>
+            </label>
+            <button class="action-button primary" id="saveButtonBtn">Create Button</button>
+        </div>
+    </section>
+
+    <script src="./js/kbar-data.js"></script>
+    <script src="./js/main.js"></script>
+</body>
+</html>

@@ -236,8 +236,6 @@ std::vector<PBQA_ResultItem> BuildItems() {
     AddMenuCommand(items, L"Reveal in Explorer", L"File > Reveal in Explorer");
     AddMenuCommand(items, L"Purge All Memory & Disk Cache...", L"Edit > Purge > All Memory & Disk Cache...");
 
-    items.push_back({L"Orbit Camera", L"PersonalBar > Camera", L"Run", L"Tool", L"orbitCamera", AEGP_InstalledEffectKey_NONE});
-    items.push_back({L"Reveal Source", L"PersonalBar > Project", L"Run", L"Tool", L"revealSource", AEGP_InstalledEffectKey_NONE});
     return items;
 }
 
@@ -416,6 +414,7 @@ void ApplyResult(const PBQA_ResultItem& item) {
     } else if (item.kind == L"Custom") {
         auto [action_w, value_w] = SplitCustomPayload(item.payload);
         std::string action = EscapeForJsString(WideToUtf8(action_w));
+        std::string value_raw = WideToUtf8(value_w);
         std::string value = EscapeForJsString(WideToUtf8(value_w));
         if (action == "menu") {
             ExecuteScript(
@@ -436,9 +435,27 @@ void ApplyResult(const PBQA_ResultItem& item) {
                 "}catch(e){try{app.endUndoGroup();}catch(_e){} alert('Button expression error: '+e.toString());}})();");
         } else if (action == "script") {
             ExecuteScript(
-                "(function(){try{"
-                + value +
+                "(function(){try{\n"
+                + value_raw +
                 "}catch(e){alert('Button script error: '+e.toString());}})();");
+        } else if (action == "preset") {
+            ExecuteScript(
+                "(function(){try{"
+                "var f=File(\"" + value + "\");"
+                "if(!f.exists){alert('Preset file not found: '+f.fsName);return;}"
+                "var c=app.project.activeItem;"
+                "if(!(c instanceof CompItem)){alert('Open or select a composition first.');return;}"
+                "app.beginUndoGroup('PersonalBar Preset');"
+                "var layers=c.selectedLayers;"
+                "if(layers.length===0){"
+                "var solid=c.layers.addSolid([1,1,1],'Preset Solid',c.width,c.height,c.pixelAspect,c.duration);"
+                "for(var s=1;s<=c.numLayers;s++){c.layer(s).selected=false;}"
+                "solid.selected=true;"
+                "layers=[solid];"
+                "}"
+                "for(var i=0;i<layers.length;i++){layers[i].applyPreset(f);}"
+                "app.endUndoGroup();"
+                "}catch(e){try{app.endUndoGroup();}catch(_e){} alert('Button preset error: '+e.toString());}})();");
         } else if (action == "scriptfile") {
             ExecuteScript(
                 "(function(){try{"

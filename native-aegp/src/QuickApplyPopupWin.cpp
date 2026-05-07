@@ -23,6 +23,7 @@ enum ManagerControlId {
     IDC_NAME_EDIT,
     IDC_TIP_EDIT,
     IDC_ICON_EDIT,
+    IDC_COLOR_EDIT,
     IDC_ACTION_EDIT,
     IDC_VALUE_EDIT,
     IDC_NEW_BUTTON,
@@ -51,6 +52,7 @@ HWND g_btn_list = nullptr;
 HWND g_name_edit = nullptr;
 HWND g_tip_edit = nullptr;
 HWND g_icon_edit = nullptr;
+HWND g_color_edit = nullptr;
 HWND g_action_edit = nullptr;
 HWND g_value_edit = nullptr;
 int g_selected = 0;
@@ -68,6 +70,7 @@ struct CustomButton {
     std::wstring name;
     std::wstring tooltip;
     std::wstring icon;
+    std::wstring color;
     std::wstring action;
     std::wstring value;
 };
@@ -152,13 +155,47 @@ void SaveSettings() {
 }
 
 std::wstring ReadIniString(const wchar_t* section, const wchar_t* key, const wchar_t* fallback = L"") {
-    wchar_t buffer[8192] = {};
-    GetPrivateProfileStringW(section, key, fallback, buffer, 8192, SettingsPath().c_str());
-    return buffer;
+    std::vector<wchar_t> buffer(262144);
+    GetPrivateProfileStringW(section, key, fallback, buffer.data(), static_cast<DWORD>(buffer.size()), SettingsPath().c_str());
+    std::wstring value = buffer.data();
+    std::wstring out;
+    out.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] == L'\\' && i + 1 < value.size()) {
+            wchar_t next = value[++i];
+            if (next == L'n') {
+                out.push_back(L'\n');
+            } else if (next == L'r') {
+                out.push_back(L'\r');
+            } else if (next == L't') {
+                out.push_back(L'\t');
+            } else {
+                out.push_back(next);
+            }
+        } else {
+            out.push_back(value[i]);
+        }
+    }
+    return out;
 }
 
 void WriteIniString(const wchar_t* section, const wchar_t* key, const std::wstring& value) {
-    WritePrivateProfileStringW(section, key, value.c_str(), SettingsPath().c_str());
+    std::wstring out;
+    out.reserve(value.size() + 16);
+    for (wchar_t ch : value) {
+        if (ch == L'\\') {
+            out += L"\\\\";
+        } else if (ch == L'\n') {
+            out += L"\\n";
+        } else if (ch == L'\r') {
+            out += L"\\r";
+        } else if (ch == L'\t') {
+            out += L"\\t";
+        } else {
+            out.push_back(ch);
+        }
+    }
+    WritePrivateProfileStringW(section, key, out.c_str(), SettingsPath().c_str());
 }
 
 void LoadCustomButtons() {
@@ -178,6 +215,7 @@ void LoadCustomButtons() {
         button.name = ReadIniString(section, L"Name");
         button.tooltip = ReadIniString(section, L"Tooltip");
         button.icon = ReadIniString(section, L"Icon", L"zap");
+        button.color = ReadIniString(section, L"Color", L"rgba(255, 190, 80, 1)");
         button.action = ReadIniString(section, L"Action", L"menu");
         button.value = ReadIniString(section, L"Value");
         if (!button.name.empty()) {
@@ -202,6 +240,7 @@ void SaveCustomButtons() {
         WriteIniString(section, L"Name", button.name);
         WriteIniString(section, L"Tooltip", button.tooltip);
         WriteIniString(section, L"Icon", button.icon);
+        WriteIniString(section, L"Color", button.color);
         WriteIniString(section, L"Action", button.action);
         WriteIniString(section, L"Value", button.value);
     }
@@ -359,6 +398,7 @@ void LoadManagerFields(int index) {
         SetWindowTextW(g_name_edit, L"");
         SetWindowTextW(g_tip_edit, L"");
         SetWindowTextW(g_icon_edit, L"zap");
+        SetWindowTextW(g_color_edit, L"rgba(255, 190, 80, 1)");
         SetWindowTextW(g_action_edit, L"menu");
         SetWindowTextW(g_value_edit, L"");
         return;
@@ -367,6 +407,7 @@ void LoadManagerFields(int index) {
     SetWindowTextW(g_name_edit, button.name.c_str());
     SetWindowTextW(g_tip_edit, button.tooltip.c_str());
     SetWindowTextW(g_icon_edit, button.icon.c_str());
+    SetWindowTextW(g_color_edit, button.color.c_str());
     SetWindowTextW(g_action_edit, button.action.c_str());
     SetWindowTextW(g_value_edit, button.value.c_str());
 }
@@ -376,6 +417,7 @@ void SaveManagerFields(int index) {
     button.name = WindowText(g_name_edit);
     button.tooltip = WindowText(g_tip_edit);
     button.icon = WindowText(g_icon_edit);
+    button.color = WindowText(g_color_edit);
     button.action = Lower(WindowText(g_action_edit));
     button.value = WindowText(g_value_edit);
     if (button.name.empty()) {
@@ -383,6 +425,9 @@ void SaveManagerFields(int index) {
     }
     if (button.icon.empty()) {
         button.icon = L"zap";
+    }
+    if (button.color.empty()) {
+        button.color = L"rgba(255, 190, 80, 1)";
     }
     if (button.action.empty()) {
         button.action = L"menu";
@@ -422,11 +467,6 @@ void ShowManager() {
 
 std::vector<size_t> ButtonItems() {
     std::vector<size_t> out;
-    for (size_t i = 0; i < g_items.size() && out.size() < 9; ++i) {
-        if (g_items[i].kind == L"Tool") {
-            out.push_back(i);
-        }
-    }
     return out;
 }
 
@@ -543,17 +583,37 @@ COLORREF KindAccent(const PBQA_ResultItem& item) {
 
 std::wstring ButtonIcon(const CustomButton& button) {
     if (button.icon == L"camera") return L"CAM";
-    if (button.icon == L"search") return L"SEA";
+    if (button.icon == L"search") return L"SRC";
     if (button.icon == L"scissors") return L"CUT";
     if (button.icon == L"film") return L"FILM";
     if (button.icon == L"trash") return L"DEL";
-    if (button.icon == L"wand") return L"MAG";
+    if (button.icon == L"wand" || button.icon == L"sparkles") return L"MAG";
     if (button.icon == L"zap") return L"ZAP";
     if (button.icon == L"play") return L"RUN";
     if (button.icon == L"box") return L"BOX";
     if (button.icon == L"code") return L"JS";
+    if (button.icon == L"refresh-cw" || button.icon == L"refresh") return L"R";
+    if (button.icon == L"repeat") return L"C";
+    if (button.icon == L"printer") return L"PRN";
+    if (button.icon == L"grid-3x3") return L"GRID";
     if (button.icon.empty()) return L"*";
     return button.icon.substr(0, std::min<size_t>(4, button.icon.size()));
+}
+
+COLORREF ParseButtonColor(const std::wstring& value) {
+    int r = 255;
+    int g = 190;
+    int b = 80;
+    if (swscanf_s(value.c_str(), L"rgba(%d, %d, %d", &r, &g, &b) == 3 ||
+        swscanf_s(value.c_str(), L"rgb(%d, %d, %d", &r, &g, &b) == 3) {
+        return RGB(std::max(0, std::min(255, r)), std::max(0, std::min(255, g)), std::max(0, std::min(255, b)));
+    }
+    if (value.size() == 7 && value[0] == L'#') {
+        int rr = 255, gg = 190, bb = 80;
+        swscanf_s(value.c_str() + 1, L"%02x%02x%02x", &rr, &gg, &bb);
+        return RGB(rr, gg, bb);
+    }
+    return RGB(r, g, b);
 }
 
 void DrawButtonStripButton(HDC hdc, RECT rc, const PBQA_ResultItem& item, int number) {
@@ -590,7 +650,7 @@ void DrawCustomStripButton(HDC hdc, RECT rc, const CustomButton& button) {
     DeleteObject(bg);
 
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(255, 190, 80));
+    SetTextColor(hdc, ParseButtonColor(button.color));
     RECT icon_rc = {rc.left + 8, rc.top + 5, rc.left + 50, rc.bottom - 5};
     std::wstring icon = ButtonIcon(button);
     DrawTextW(hdc, icon.c_str(), -1, &icon_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -601,6 +661,40 @@ void DrawCustomStripButton(HDC hdc, RECT rc, const CustomButton& button) {
 }
 
 LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    auto hit_index = [&](int px, int py) -> int {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        auto buttons = ButtonItems();
+        int x = 0;
+        int y = 4;
+        const int gap = g_button_spacing;
+        const int bh = 34;
+        for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
+            int bw = std::max(96, g_button_size);
+            if (x > 0 && x + bw > rc.right) {
+                x = 0;
+                y += bh + gap;
+            }
+            if (py >= y && py < y + bh && px >= x && px < x + bw) {
+                return i;
+            }
+            x += bw + gap;
+        }
+        int tool_count = static_cast<int>(buttons.size());
+        for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
+            int bw = std::max(54, g_button_size);
+            if (x > 0 && x + bw > rc.right) {
+                x = 0;
+                y += bh + gap;
+            }
+            if (py >= y && py < y + bh && px >= x && px < x + bw) {
+                return tool_count + i;
+            }
+            x += bw + gap;
+        }
+        return -1;
+    };
+
     switch (msg) {
         case WM_PAINT: {
             PAINTSTRUCT ps;
@@ -614,22 +708,32 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             SelectObject(hdc, g_font);
             auto buttons = ButtonItems();
             int x = 0;
+            int y = 4;
             const int gap = g_button_spacing;
+            const int bh = 34;
             for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
                 int bw = std::max(96, g_button_size);
-                if (x + bw > rc.right) {
+                if (x > 0 && x + bw > rc.right) {
+                    x = 0;
+                    y += bh + gap;
+                }
+                if (y + bh > rc.bottom) {
                     break;
                 }
-                RECT brc = {x, 4, x + bw, rc.bottom - 4};
+                RECT brc = {x, y, x + bw, y + bh};
                 DrawButtonStripButton(hdc, brc, g_items[buttons[i]], i + 1);
                 x += bw + gap;
             }
             for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
-                int bw = std::max(72, g_button_size);
-                if (x + bw > rc.right) {
+                int bw = std::max(54, g_button_size);
+                if (x > 0 && x + bw > rc.right) {
+                    x = 0;
+                    y += bh + gap;
+                }
+                if (y + bh > rc.bottom) {
                     break;
                 }
-                RECT brc = {x, 4, x + bw, rc.bottom - 4};
+                RECT brc = {x, y, x + bw, y + bh};
                 DrawCustomStripButton(hdc, brc, g_custom_buttons[static_cast<size_t>(i)]);
                 x += bw + gap;
             }
@@ -638,26 +742,10 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         }
         case WM_LBUTTONDOWN: {
             HideSettings();
-            auto buttons = ButtonItems();
-            int x = 0;
-            int px = GET_X_LPARAM(lparam);
-            const int gap = g_button_spacing;
-            for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = std::max(96, g_button_size);
-                if (px >= x && px < x + bw) {
-                    ApplyButton(i);
-                    return 0;
-                }
-                x += bw + gap;
-            }
-            int tool_count = static_cast<int>(buttons.size());
-            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
-                int bw = std::max(72, g_button_size);
-                if (px >= x && px < x + bw) {
-                    ApplyButton(tool_count + i);
-                    return 0;
-                }
-                x += bw + gap;
+            int hit = hit_index(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            if (hit >= 0) {
+                ApplyButton(hit);
+                return 0;
             }
             SetFocus(g_edit);
             return 0;
@@ -665,59 +753,44 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         case WM_RBUTTONDOWN: {
             HideSettings();
             auto buttons = ButtonItems();
-            int x = 0;
-            int px = GET_X_LPARAM(lparam);
-            const int gap = g_button_spacing;
-            for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = std::max(96, g_button_size);
-                if (px >= x && px < x + bw) {
-                    PBQA_ResultItem& item = g_items[buttons[i]];
-                    if (!item.favorite) {
-                        return 0;
-                    }
-                    HMENU menu = CreatePopupMenu();
-                    AppendMenuW(menu, MF_STRING, 1, L"Remove from Favorites");
-                    POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-                    ClientToScreen(hwnd, &pt);
-                    int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
-                    DestroyMenu(menu);
-                    if (cmd == 1) {
-                        item.favorite = false;
-                        SaveFavorite(item);
-                        FilterItems();
-                    }
-                    SetFocus(g_edit);
+            int hit = hit_index(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            if (hit >= 0 && hit < static_cast<int>(buttons.size())) {
+                PBQA_ResultItem& item = g_items[buttons[static_cast<size_t>(hit)]];
+                if (!item.favorite) {
                     return 0;
                 }
-                x += bw + gap;
+                HMENU menu = CreatePopupMenu();
+                AppendMenuW(menu, MF_STRING, 1, L"Remove from Favorites");
+                POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+                ClientToScreen(hwnd, &pt);
+                int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
+                DestroyMenu(menu);
+                if (cmd == 1) {
+                    item.favorite = false;
+                    SaveFavorite(item);
+                    FilterItems();
+                }
+                SetFocus(g_edit);
+                return 0;
             }
             SetFocus(g_edit);
             return 0;
         }
         case WM_MOUSEMOVE: {
             auto buttons = ButtonItems();
-            int x = 0;
-            int px = GET_X_LPARAM(lparam);
-            const int gap = g_button_spacing;
-            for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = std::max(96, g_button_size);
-                if (px >= x && px < x + bw) {
-                    std::wstring tip = g_items[buttons[static_cast<size_t>(i)]].detail;
-                    SetWindowTextW(hwnd, tip.c_str());
-                    return 0;
-                }
-                x += bw + gap;
+            int hit = hit_index(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            if (hit >= 0 && hit < static_cast<int>(buttons.size())) {
+                std::wstring tip = g_items[buttons[static_cast<size_t>(hit)]].detail;
+                SetWindowTextW(hwnd, tip.c_str());
+                return 0;
             }
-            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
-                int bw = std::max(72, g_button_size);
-                if (px >= x && px < x + bw) {
-                    std::wstring tip = g_custom_buttons[static_cast<size_t>(i)].tooltip.empty()
-                        ? g_custom_buttons[static_cast<size_t>(i)].name
-                        : g_custom_buttons[static_cast<size_t>(i)].tooltip;
-                    SetWindowTextW(hwnd, tip.c_str());
-                    return 0;
-                }
-                x += bw + gap;
+            int custom = hit - static_cast<int>(buttons.size());
+            if (custom >= 0 && custom < static_cast<int>(g_custom_buttons.size())) {
+                std::wstring tip = g_custom_buttons[static_cast<size_t>(custom)].tooltip.empty()
+                    ? g_custom_buttons[static_cast<size_t>(custom)].name
+                    : g_custom_buttons[static_cast<size_t>(custom)].tooltip;
+                SetWindowTextW(hwnd, tip.c_str());
+                return 0;
             }
             SetWindowTextW(hwnd, L"");
             return 0;
@@ -995,26 +1068,28 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 nullptr);
             SendMessageW(g_btn_list, WM_SETFONT, reinterpret_cast<WPARAM>(g_small_font), TRUE);
 
-            AddStatic(hwnd, L"Buttons", 18, 14, 200, 20);
+            AddStatic(hwnd, L"BUTTONS", 18, 14, 200, 20);
             AddStatic(hwnd, L"Name", 310, 18, 120, 20);
             g_name_edit = AddEdit(hwnd, IDC_NAME_EDIT, 405, 14, 320, 26);
             AddStatic(hwnd, L"Tooltip", 310, 52, 120, 20);
             g_tip_edit = AddEdit(hwnd, IDC_TIP_EDIT, 405, 48, 320, 26);
             AddStatic(hwnd, L"Icon", 310, 86, 120, 20);
             g_icon_edit = AddEdit(hwnd, IDC_ICON_EDIT, 405, 82, 160, 26);
+            AddStatic(hwnd, L"Color", 575, 86, 80, 20);
+            g_color_edit = AddEdit(hwnd, IDC_COLOR_EDIT, 635, 82, 90, 26);
             AddStatic(hwnd, L"Action", 310, 120, 120, 20);
             g_action_edit = AddEdit(hwnd, IDC_ACTION_EDIT, 405, 116, 160, 26);
             AddStatic(hwnd, L"Value", 310, 154, 120, 20);
             g_value_edit = AddEdit(hwnd, IDC_VALUE_EDIT, 405, 150, 320, 170, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL);
 
-            AddStatic(hwnd, L"Action: menu, expression, script, scriptfile", 405, 326, 330, 22);
-            AddStatic(hwnd, L"Icons: camera, search, scissors, film, trash, wand, zap, play, box, code", 405, 350, 330, 38);
+            AddStatic(hwnd, L"Actions: menu, expression, preset, script, scriptfile", 405, 326, 370, 22);
+            AddStatic(hwnd, L"Icons: camera, search, scissors, film, trash, wand, zap, play, box, code", 405, 350, 370, 38);
 
-            AddButton(hwnd, IDC_NEW_BUTTON, L"New", 18, 412, 62, 30);
-            AddButton(hwnd, IDC_SAVE_BUTTON, L"Save", 86, 412, 62, 30);
-            AddButton(hwnd, IDC_DELETE_BUTTON, L"Delete", 154, 412, 70, 30);
-            AddButton(hwnd, IDC_UP_BUTTON, L"Up", 230, 412, 58, 30);
-            AddButton(hwnd, IDC_DOWN_BUTTON, L"Down", 18, 448, 76, 30);
+            AddButton(hwnd, IDC_NEW_BUTTON, L"Add Button", 18, 412, 112, 30);
+            AddButton(hwnd, IDC_SAVE_BUTTON, L"Save", 138, 412, 70, 30);
+            AddButton(hwnd, IDC_DELETE_BUTTON, L"Delete", 216, 412, 76, 30);
+            AddButton(hwnd, IDC_UP_BUTTON, L"Up", 18, 448, 58, 30);
+            AddButton(hwnd, IDC_DOWN_BUTTON, L"Down", 84, 448, 76, 30);
 
             AddStatic(hwnd, L"Button size", 310, 404, 110, 22);
             AddButton(hwnd, IDC_SIZE_MINUS, L"-", 405, 400, 34, 30);
@@ -1027,6 +1102,30 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             return 0;
         }
 
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORLISTBOX:
+        case WM_CTLCOLOREDIT: {
+            HDC hdc = reinterpret_cast<HDC>(wparam);
+            SetTextColor(hdc, RGB(210, 210, 210));
+            SetBkColor(hdc, RGB(22, 22, 22));
+            static HBRUSH dark_brush = CreateSolidBrush(RGB(22, 22, 22));
+            return reinterpret_cast<LRESULT>(dark_brush);
+        }
+
+        case WM_SIZE: {
+            int w = LOWORD(lparam);
+            int h = HIWORD(lparam);
+            int left_w = std::max(260, w / 3);
+            MoveWindow(g_btn_list, 18, 38, left_w - 36, std::max(160, h - 160), TRUE);
+            MoveWindow(g_name_edit, left_w + 110, 14, std::max(180, w - left_w - 140), 26, TRUE);
+            MoveWindow(g_tip_edit, left_w + 110, 48, std::max(180, w - left_w - 140), 26, TRUE);
+            MoveWindow(g_icon_edit, left_w + 110, 82, 160, 26, TRUE);
+            MoveWindow(g_color_edit, left_w + 340, 82, std::max(90, w - left_w - 370), 26, TRUE);
+            MoveWindow(g_action_edit, left_w + 110, 116, 160, 26, TRUE);
+            MoveWindow(g_value_edit, left_w + 110, 150, std::max(180, w - left_w - 140), std::max(120, h - 300), TRUE);
+            return 0;
+        }
+
         case WM_COMMAND: {
             int id = LOWORD(wparam);
             if (id == IDC_BTN_LIST && HIWORD(wparam) == LBN_SELCHANGE) {
@@ -1034,11 +1133,28 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 return 0;
             }
             if (id == IDC_NEW_BUTTON) {
+                HMENU menu = CreatePopupMenu();
+                AppendMenuW(menu, MF_STRING, 1, L"Invoke Menu Item");
+                AppendMenuW(menu, MF_STRING, 2, L"Set Expression");
+                AppendMenuW(menu, MF_STRING, 3, L"Apply Preset");
+                AppendMenuW(menu, MF_STRING, 4, L"Run Scriptlet");
+                AppendMenuW(menu, MF_STRING, 5, L"Run JSX/JSXBIN File");
+                POINT pt = {18, 446};
+                ClientToScreen(hwnd, &pt);
+                int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
+                DestroyMenu(menu);
+                if (!cmd) {
+                    return 0;
+                }
                 SendMessageW(g_btn_list, LB_SETCURSEL, static_cast<WPARAM>(-1), 0);
                 LoadManagerFields(-1);
                 SetWindowTextW(g_name_edit, L"New Button");
                 SetWindowTextW(g_icon_edit, L"zap");
-                SetWindowTextW(g_action_edit, L"menu");
+                if (cmd == 1) SetWindowTextW(g_action_edit, L"menu");
+                if (cmd == 2) SetWindowTextW(g_action_edit, L"expression");
+                if (cmd == 3) SetWindowTextW(g_action_edit, L"preset");
+                if (cmd == 4) SetWindowTextW(g_action_edit, L"script");
+                if (cmd == 5) SetWindowTextW(g_action_edit, L"scriptfile");
                 SetFocus(g_name_edit);
                 return 0;
             }
@@ -1136,12 +1252,12 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
-            g_tools = CreateWindowExW(0, L"PBQA_Tools", L"", WS_CHILD | WS_VISIBLE, 13, 15, 47, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-            g_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 72, 16, 628, 38, hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
-            g_buttons = CreateWindowExW(0, L"PBQA_Buttons", L"", WS_CHILD | WS_VISIBLE, 13, 64, 696, 44, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-            g_results = CreateWindowExW(0, L"PBQA_Results", L"", WS_CHILD | WS_VISIBLE, 13, 116, 696, 310, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_tools = CreateWindowExW(0, L"PBQA_Tools", L"", WS_CHILD | WS_VISIBLE, 13, 10, 47, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 72, 11, 628, 38, hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
+            g_buttons = CreateWindowExW(0, L"PBQA_Buttons", L"", WS_CHILD | WS_VISIBLE, 13, 58, 696, 126, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_results = CreateWindowExW(0, L"PBQA_Results", L"", WS_CHILD | WS_VISIBLE, 13, 194, 696, 310, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_settings = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Settings", L"", WS_POPUP, 0, 0, 330, 174, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-            g_manager = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Manager", L"PersonalBar Settings", WS_POPUP | WS_CAPTION | WS_SYSMENU, 0, 0, 760, 520, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_manager = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Manager", L"PersonalBar Settings", WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, 0, 0, 760, 520, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
 
             SendMessageW(g_edit, WM_SETFONT, reinterpret_cast<WPARAM>(g_font), TRUE);
             SendMessageW(g_edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search effects, presets, commands, tools..."));
@@ -1183,10 +1299,10 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         case WM_SIZE: {
             int w = LOWORD(lparam);
             int h = HIWORD(lparam);
-            MoveWindow(g_tools, 13, 15, 47, 39, TRUE);
-            MoveWindow(g_edit, 72, 16, std::max(160, w - 96), 38, TRUE);
-            MoveWindow(g_buttons, 13, 64, std::max(220, w - 26), 44, TRUE);
-            MoveWindow(g_results, 13, 116, std::max(220, w - 26), std::max(110, h - 161), TRUE);
+            MoveWindow(g_tools, 13, 10, 47, 39, TRUE);
+            MoveWindow(g_edit, 72, 11, std::max(160, w - 96), 38, TRUE);
+            MoveWindow(g_buttons, 13, 58, std::max(220, w - 26), 126, TRUE);
+            MoveWindow(g_results, 13, 194, std::max(220, w - 26), std::max(110, h - 239), TRUE);
             if (g_settings) {
                 RECT window_rc = {};
                 GetWindowRect(g_hwnd, &window_rc);
@@ -1303,14 +1419,14 @@ void PBQA_ShowPopupWindow() {
             kWindowClass,
             L"Quick Apply",
             WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
-            CW_USEDEFAULT, CW_USEDEFAULT, 724, 540,
+            CW_USEDEFAULT, CW_USEDEFAULT, 724, 620,
             nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     }
 
     RECT work = {};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     int w = 724;
-    int h = 540;
+    int h = 620;
     int x = work.left + ((work.right - work.left) - w) / 2;
     int y = work.top + 110;
     if (g_keep_at_cursor) {

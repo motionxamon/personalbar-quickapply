@@ -30,6 +30,32 @@ function New-Button {
     }
 }
 
+function Get-AutoIcon {
+    param([string]$Name, [string]$Action, [string]$Icon)
+    $n = ($Name + " " + $Icon).ToLowerInvariant()
+    if ($Icon -match '^(camera|search|scissors|film|trash|wand|zap|play|box|code|refresh|refresh-cw|repeat|printer|grid-3x3|flag|flag-checkered|share|share-alt|move-horizontal)$') {
+        return $Icon
+    }
+    if ($n -match 'camera|cam rig') { return "camera" }
+    if ($n -match 'reveal|search|source') { return "search" }
+    if ($n -match 'trash|clean|delete|remove') { return "trash" }
+    if ($n -match 'auto.?trace|cut|scissor|split') { return "scissors" }
+    if ($n -match 'film|video|footage') { return "film" }
+    if ($n -match 'reduce|print|render') { return "printer" }
+    if ($n -match 'grid|utility|util') { return "grid-3x3" }
+    if ($n -match 'loop|cycle|pingpong|refresh') { return "refresh" }
+    if ($n -match 'swap|width|height') { return "move-horizontal" }
+    if ($n -match 'exp|code|script|jsx') { return "code" }
+    if ($n -match 'pack|share|structure') { return "share-alt" }
+    if ($n -match 'universe|flag') { return "flag" }
+    if ($n -match 'solid|box|layer') { return "box" }
+    if ($n -match 'wiggle|random|magic|blur|preset') { return "wand" }
+    if ($Action -eq "menu") { return "play" }
+    if ($Action -eq "preset") { return "wand" }
+    if ($Action -eq "script") { return "code" }
+    return $Icon
+}
+
 $orbitScript = @'
 (function(){
     var c = app.project.activeItem;
@@ -121,6 +147,7 @@ if (Test-Path -LiteralPath $KbarPath) {
             if ([string]::IsNullOrWhiteSpace($icon) -or $icon -match '^data:') {
                 $icon = [string]$button.name
             }
+            $icon = Get-AutoIcon -Name ([string]$button.name) -Action $action -Icon $icon
 
             $buttons += New-Button `
                 -Name ([string]$button.name) `

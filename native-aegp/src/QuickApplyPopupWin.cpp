@@ -34,7 +34,9 @@ enum ManagerControlId {
     IDC_SIZE_MINUS,
     IDC_SIZE_PLUS,
     IDC_SPACE_MINUS,
-    IDC_SPACE_PLUS
+    IDC_SPACE_PLUS,
+    IDC_ICON_PICK_BUTTON,
+    IDC_COLOR_PICK_BUTTON
 };
 
 std::vector<PBQA_ResultItem> g_items;
@@ -66,6 +68,7 @@ HWND g_lbl_help_actions = nullptr;
 HWND g_lbl_help_icons = nullptr;
 HWND g_lbl_size = nullptr;
 HWND g_lbl_spacing = nullptr;
+int g_manager_tab = 0;
 int g_selected = 0;
 HFONT g_font = nullptr;
 HFONT g_small_font = nullptr;
@@ -397,6 +400,38 @@ void RefreshManagerList() {
     }
 }
 
+void ShowManagerTab(HWND hwnd, int tab) {
+    g_manager_tab = tab;
+    const int show_buttons = tab == 0 ? SW_SHOW : SW_HIDE;
+    const int show_settings = tab == 1 ? SW_SHOW : SW_HIDE;
+
+    HWND button_controls[] = {
+        g_btn_list, g_lbl_buttons, g_lbl_name, g_name_edit, g_lbl_tip, g_tip_edit,
+        g_lbl_icon, g_icon_edit, GetDlgItem(hwnd, IDC_ICON_PICK_BUTTON),
+        g_lbl_color, g_color_edit, GetDlgItem(hwnd, IDC_COLOR_PICK_BUTTON),
+        g_lbl_action, g_action_edit, g_lbl_value, g_value_edit,
+        g_lbl_help_actions, g_lbl_help_icons,
+        GetDlgItem(hwnd, IDC_NEW_BUTTON), GetDlgItem(hwnd, IDC_SAVE_BUTTON),
+        GetDlgItem(hwnd, IDC_DELETE_BUTTON), GetDlgItem(hwnd, IDC_UP_BUTTON),
+        GetDlgItem(hwnd, IDC_DOWN_BUTTON)
+    };
+    for (HWND control : button_controls) {
+        if (control) ShowWindow(control, show_buttons);
+    }
+
+    HWND settings_controls[] = {
+        g_lbl_size, GetDlgItem(hwnd, IDC_SIZE_MINUS), GetDlgItem(hwnd, IDC_SIZE_PLUS),
+        g_lbl_spacing, GetDlgItem(hwnd, IDC_SPACE_MINUS), GetDlgItem(hwnd, IDC_SPACE_PLUS)
+    };
+    for (HWND control : settings_controls) {
+        if (control) ShowWindow(control, show_settings);
+    }
+    if (GetDlgItem(hwnd, IDCANCEL)) {
+        ShowWindow(GetDlgItem(hwnd, IDCANCEL), SW_SHOW);
+    }
+    InvalidateRect(hwnd, nullptr, TRUE);
+}
+
 int SelectedManagerIndex() {
     if (!g_btn_list) {
         return -1;
@@ -467,8 +502,8 @@ void ShowManager() {
     LoadManagerFields(SelectedManagerIndex());
     RECT work = {};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    int w = 760;
-    int h = 520;
+    int w = 940;
+    int h = 720;
     int x = work.left + ((work.right - work.left) - w) / 2;
     int y = work.top + 130;
     SetWindowPos(g_manager, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW);
@@ -592,23 +627,154 @@ COLORREF KindAccent(const PBQA_ResultItem& item) {
     return RGB(75, 235, 205);
 }
 
+COLORREF ParseButtonColor(const std::wstring& value);
+
 std::wstring ButtonIcon(const CustomButton& button) {
-    if (button.icon == L"camera") return L"CAM";
-    if (button.icon == L"search") return L"SRC";
-    if (button.icon == L"scissors") return L"CUT";
-    if (button.icon == L"film") return L"FILM";
-    if (button.icon == L"trash") return L"DEL";
-    if (button.icon == L"wand" || button.icon == L"sparkles") return L"MAG";
-    if (button.icon == L"zap") return L"ZAP";
-    if (button.icon == L"play") return L"RUN";
-    if (button.icon == L"box") return L"BOX";
-    if (button.icon == L"code") return L"JS";
-    if (button.icon == L"refresh-cw" || button.icon == L"refresh") return L"R";
-    if (button.icon == L"repeat") return L"C";
-    if (button.icon == L"printer") return L"PRN";
-    if (button.icon == L"grid-3x3") return L"GRID";
     if (button.icon.empty()) return L"*";
     return button.icon.substr(0, std::min<size_t>(4, button.icon.size()));
+}
+
+bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
+    std::wstring name = Lower(icon);
+    HPEN pen = CreatePen(PS_SOLID, 2, color);
+    HBRUSH brush = CreateSolidBrush(color);
+    HGDIOBJ old_pen = SelectObject(hdc, pen);
+    HGDIOBJ old_brush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    int cx = (rc.left + rc.right) / 2;
+    int cy = (rc.top + rc.bottom) / 2;
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+
+    auto finish = [&]() {
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
+        DeleteObject(brush);
+        DeleteObject(pen);
+        return true;
+    };
+
+    if (name == L"camera" || name == L"video") {
+        Rectangle(hdc, rc.left + w / 6, cy - h / 5, rc.left + w * 2 / 3, cy + h / 5);
+        MoveToEx(hdc, rc.left + w * 2 / 3, cy - h / 8, nullptr);
+        LineTo(hdc, rc.right - w / 8, cy - h / 3);
+        LineTo(hdc, rc.right - w / 8, cy + h / 3);
+        LineTo(hdc, rc.left + w * 2 / 3, cy + h / 8);
+        return finish();
+    }
+    if (name == L"search" || name == L"zoom") {
+        Ellipse(hdc, rc.left + w / 6, rc.top + h / 6, rc.left + w * 2 / 3, rc.top + h * 2 / 3);
+        MoveToEx(hdc, rc.left + w * 2 / 3 - 2, rc.top + h * 2 / 3 - 2, nullptr);
+        LineTo(hdc, rc.right - w / 8, rc.bottom - h / 8);
+        return finish();
+    }
+    if (name == L"scissors" || name == L"cut") {
+        Ellipse(hdc, rc.left + 2, cy - 8, rc.left + 12, cy + 2);
+        Ellipse(hdc, rc.left + 2, cy + 4, rc.left + 12, cy + 14);
+        MoveToEx(hdc, rc.left + 12, cy, nullptr); LineTo(hdc, rc.right - 3, rc.top + 4);
+        MoveToEx(hdc, rc.left + 12, cy + 6, nullptr); LineTo(hdc, rc.right - 3, rc.bottom - 4);
+        return finish();
+    }
+    if (name == L"trash" || name == L"delete") {
+        Rectangle(hdc, rc.left + w / 4, rc.top + h / 3, rc.right - w / 4, rc.bottom - h / 8);
+        MoveToEx(hdc, rc.left + w / 5, rc.top + h / 4, nullptr); LineTo(hdc, rc.right - w / 5, rc.top + h / 4);
+        MoveToEx(hdc, cx - 4, rc.top + h / 6, nullptr); LineTo(hdc, cx + 4, rc.top + h / 6);
+        return finish();
+    }
+    if (name == L"refresh" || name == L"refresh-cw" || name == L"repeat") {
+        Arc(hdc, rc.left + 4, rc.top + 4, rc.right - 4, rc.bottom - 4, rc.right - 7, cy, cx, rc.top + 4);
+        MoveToEx(hdc, rc.right - 9, cy - 8, nullptr); LineTo(hdc, rc.right - 4, cy); LineTo(hdc, rc.right - 14, cy);
+        return finish();
+    }
+    if (name == L"film") {
+        Rectangle(hdc, rc.left + 4, rc.top + 3, rc.right - 4, rc.bottom - 3);
+        for (int y = rc.top + 6; y < rc.bottom - 5; y += 7) {
+            Rectangle(hdc, rc.left + 7, y, rc.left + 10, y + 3);
+            Rectangle(hdc, rc.right - 10, y, rc.right - 7, y + 3);
+        }
+        return finish();
+    }
+    if (name == L"printer") {
+        Rectangle(hdc, rc.left + 5, cy - 3, rc.right - 5, cy + 9);
+        Rectangle(hdc, rc.left + 9, rc.top + 5, rc.right - 9, cy - 3);
+        Rectangle(hdc, rc.left + 10, cy + 6, rc.right - 10, rc.bottom - 4);
+        return finish();
+    }
+    if (name == L"grid" || name == L"grid-3x3") {
+        HGDIOBJ old_fill = SelectObject(hdc, brush);
+        for (int yy = 0; yy < 3; ++yy) {
+            for (int xx = 0; xx < 3; ++xx) {
+                Rectangle(hdc, rc.left + 4 + xx * 9, rc.top + 4 + yy * 9, rc.left + 10 + xx * 9, rc.top + 10 + yy * 9);
+            }
+        }
+        SelectObject(hdc, old_fill);
+        return finish();
+    }
+    if (name == L"box" || name == L"layers") {
+        Rectangle(hdc, rc.left + 9, rc.top + 6, rc.right - 4, rc.bottom - 9);
+        Rectangle(hdc, rc.left + 4, rc.top + 11, rc.right - 9, rc.bottom - 4);
+        return finish();
+    }
+    if (name == L"play") {
+        HGDIOBJ old_fill = SelectObject(hdc, brush);
+        POINT pts[3] = {{rc.left + 8, rc.top + 5}, {rc.left + 8, rc.bottom - 5}, {rc.right - 5, cy}};
+        Polygon(hdc, pts, 3);
+        SelectObject(hdc, old_fill);
+        return finish();
+    }
+    if (name == L"zap" || name == L"bolt") {
+        HGDIOBJ old_fill = SelectObject(hdc, brush);
+        POINT pts[6] = {{cx, rc.top + 2}, {rc.left + 8, cy + 1}, {cx - 1, cy + 1}, {cx - 4, rc.bottom - 2}, {rc.right - 7, cy - 2}, {cx + 1, cy - 2}};
+        Polygon(hdc, pts, 6);
+        SelectObject(hdc, old_fill);
+        return finish();
+    }
+    if (name == L"wand" || name == L"sparkles") {
+        MoveToEx(hdc, rc.left + 7, rc.bottom - 6, nullptr); LineTo(hdc, rc.right - 8, rc.top + 7);
+        MoveToEx(hdc, rc.right - 10, rc.top + 4, nullptr); LineTo(hdc, rc.right - 10, rc.top + 14);
+        MoveToEx(hdc, rc.right - 15, rc.top + 9, nullptr); LineTo(hdc, rc.right - 5, rc.top + 9);
+        return finish();
+    }
+    if (name == L"flag" || name == L"flag-checkered") {
+        MoveToEx(hdc, rc.left + 6, rc.top + 5, nullptr); LineTo(hdc, rc.left + 6, rc.bottom - 4);
+        Rectangle(hdc, rc.left + 7, rc.top + 5, rc.right - 5, cy + 2);
+        return finish();
+    }
+    if (name == L"share" || name == L"share-alt") {
+        HGDIOBJ old_fill = SelectObject(hdc, brush);
+        Ellipse(hdc, rc.left + 4, cy - 4, rc.left + 12, cy + 4);
+        Ellipse(hdc, rc.right - 12, rc.top + 3, rc.right - 4, rc.top + 11);
+        Ellipse(hdc, rc.right - 12, rc.bottom - 11, rc.right - 4, rc.bottom - 3);
+        SelectObject(hdc, old_fill);
+        MoveToEx(hdc, rc.left + 12, cy, nullptr); LineTo(hdc, rc.right - 12, rc.top + 7);
+        MoveToEx(hdc, rc.left + 12, cy, nullptr); LineTo(hdc, rc.right - 12, rc.bottom - 7);
+        return finish();
+    }
+    if (name == L"move-horizontal") {
+        MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.right - 5, cy);
+        MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.left + 11, cy - 6); MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.left + 11, cy + 6);
+        MoveToEx(hdc, rc.right - 5, cy, nullptr); LineTo(hdc, rc.right - 11, cy - 6); MoveToEx(hdc, rc.right - 5, cy, nullptr); LineTo(hdc, rc.right - 11, cy + 6);
+        return finish();
+    }
+    if (name == L"code") {
+        MoveToEx(hdc, cx - 4, rc.top + 5, nullptr); LineTo(hdc, rc.left + 5, cy); LineTo(hdc, cx - 4, rc.bottom - 5);
+        MoveToEx(hdc, cx + 4, rc.top + 5, nullptr); LineTo(hdc, rc.right - 5, cy); LineTo(hdc, cx + 4, rc.bottom - 5);
+        return finish();
+    }
+
+    SelectObject(hdc, old_brush);
+    SelectObject(hdc, old_pen);
+    DeleteObject(brush);
+    DeleteObject(pen);
+    return false;
+}
+
+void DrawButtonIconOrText(HDC hdc, RECT rc, const CustomButton& button) {
+    COLORREF accent = ParseButtonColor(button.color);
+    if (!DrawNamedIcon(hdc, rc, button.icon, accent)) {
+        SetTextColor(hdc, accent);
+        std::wstring icon = ButtonIcon(button);
+        DrawTextW(hdc, icon.c_str(), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
 }
 
 COLORREF ParseButtonColor(const std::wstring& value) {
@@ -661,14 +827,38 @@ void DrawCustomStripButton(HDC hdc, RECT rc, const CustomButton& button) {
     DeleteObject(bg);
 
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, ParseButtonColor(button.color));
-    RECT icon_rc = {rc.left + 8, rc.top + 5, rc.left + 50, rc.bottom - 5};
-    std::wstring icon = ButtonIcon(button);
-    DrawTextW(hdc, icon.c_str(), -1, &icon_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    RECT icon_rc = {rc.left + 6, rc.top + 5, rc.left + 38, rc.bottom - 5};
+    DrawButtonIconOrText(hdc, icon_rc, button);
 
     SetTextColor(hdc, RGB(235, 235, 235));
-    RECT label_rc = {rc.left + 52, rc.top + 5, rc.right - 10, rc.bottom - 5};
+    RECT label_rc = {rc.left + 42, rc.top + 5, rc.right - 10, rc.bottom - 5};
     DrawTextW(hdc, button.name.c_str(), -1, &label_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+}
+
+void DrawManagerTabs(HDC hdc, RECT rc) {
+    HBRUSH bg = CreateSolidBrush(RGB(18, 18, 18));
+    FillRect(hdc, &rc, bg);
+    DeleteObject(bg);
+    SetBkMode(hdc, TRANSPARENT);
+    SelectObject(hdc, g_font);
+    int mid = (rc.left + rc.right) / 2;
+    RECT left = {rc.left, rc.top, mid, rc.bottom};
+    RECT right = {mid, rc.top, rc.right, rc.bottom};
+    SetTextColor(hdc, g_manager_tab == 0 ? RGB(245, 245, 245) : RGB(165, 165, 165));
+    DrawTextW(hdc, L"BUTTONS", -1, &left, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SetTextColor(hdc, g_manager_tab == 1 ? RGB(245, 245, 245) : RGB(165, 165, 165));
+    DrawTextW(hdc, L"SETTINGS", -1, &right, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(26, 145, 245));
+    HGDIOBJ old = SelectObject(hdc, pen);
+    if (g_manager_tab == 0) {
+        MoveToEx(hdc, rc.left, rc.bottom - 2, nullptr);
+        LineTo(hdc, mid, rc.bottom - 2);
+    } else {
+        MoveToEx(hdc, mid, rc.bottom - 2, nullptr);
+        LineTo(hdc, rc.right, rc.bottom - 2);
+    }
+    SelectObject(hdc, old);
+    DeleteObject(pen);
 }
 
 LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -1069,10 +1259,10 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
             g_btn_list = CreateWindowExW(
-                WS_EX_CLIENTEDGE,
+                0,
                 L"LISTBOX",
                 L"",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_VSCROLL,
                 18, 38, 270, 360,
                 hwnd,
                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_LIST)),
@@ -1087,8 +1277,10 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             g_tip_edit = AddEdit(hwnd, IDC_TIP_EDIT, 405, 48, 320, 26);
             g_lbl_icon = AddStatic(hwnd, L"Icon", 310, 86, 120, 20);
             g_icon_edit = AddEdit(hwnd, IDC_ICON_EDIT, 405, 82, 160, 26);
+            AddButton(hwnd, IDC_ICON_PICK_BUTTON, L"Icon...", 0, 0, 72, 28);
             g_lbl_color = AddStatic(hwnd, L"Color", 575, 86, 80, 20);
             g_color_edit = AddEdit(hwnd, IDC_COLOR_EDIT, 635, 82, 90, 26);
+            AddButton(hwnd, IDC_COLOR_PICK_BUTTON, L"Color...", 0, 0, 76, 28);
             g_lbl_action = AddStatic(hwnd, L"Action", 310, 120, 120, 20);
             g_action_edit = AddEdit(hwnd, IDC_ACTION_EDIT, 405, 116, 160, 26);
             g_lbl_value = AddStatic(hwnd, L"Value", 310, 154, 120, 20);
@@ -1110,7 +1302,71 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             AddButton(hwnd, IDC_SPACE_MINUS, L"-", 570, 400, 34, 30);
             AddButton(hwnd, IDC_SPACE_PLUS, L"+", 610, 400, 34, 30);
             AddButton(hwnd, IDCANCEL, L"Close", 650, 448, 76, 30);
+            ShowManagerTab(hwnd, 0);
 
+            return 0;
+        }
+
+        case WM_MEASUREITEM: {
+            auto* item = reinterpret_cast<MEASUREITEMSTRUCT*>(lparam);
+            if (item && item->CtlID == IDC_BTN_LIST) {
+                item->itemHeight = 42;
+                return TRUE;
+            }
+            break;
+        }
+
+        case WM_DRAWITEM: {
+            auto* draw = reinterpret_cast<DRAWITEMSTRUCT*>(lparam);
+            if (!draw || draw->CtlID != IDC_BTN_LIST || draw->itemID == static_cast<UINT>(-1)) {
+                break;
+            }
+            int index = static_cast<int>(draw->itemID);
+            RECT row = draw->rcItem;
+            bool selected = (draw->itemState & ODS_SELECTED) != 0;
+            HBRUSH bg = CreateSolidBrush(selected ? RGB(13, 120, 232) : RGB(18, 18, 18));
+            FillRect(draw->hDC, &row, bg);
+            DeleteObject(bg);
+            if (index >= 0 && index < static_cast<int>(g_custom_buttons.size())) {
+                const CustomButton& button = g_custom_buttons[static_cast<size_t>(index)];
+                SetBkMode(draw->hDC, TRANSPARENT);
+                SelectObject(draw->hDC, g_small_font ? g_small_font : g_font);
+                SetTextColor(draw->hDC, selected ? RGB(255, 255, 255) : RGB(165, 165, 165));
+                RECT chevron = {row.left + 8, row.top, row.left + 28, row.bottom};
+                DrawTextW(draw->hDC, L">", -1, &chevron, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                RECT icon = {row.left + 34, row.top + 7, row.left + 64, row.bottom - 7};
+                DrawButtonIconOrText(draw->hDC, icon, button);
+                SetTextColor(draw->hDC, selected ? RGB(255, 255, 255) : RGB(218, 218, 218));
+                RECT name = {row.left + 76, row.top + 4, row.right - 210, row.bottom - 4};
+                DrawTextW(draw->hDC, button.name.c_str(), -1, &name, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                SetTextColor(draw->hDC, selected ? RGB(220, 235, 255) : RGB(105, 105, 105));
+                RECT kind = {row.right - 180, row.top + 4, row.right - 58, row.bottom - 4};
+                DrawTextW(draw->hDC, button.action.c_str(), -1, &kind, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                SetTextColor(draw->hDC, selected ? RGB(255, 255, 255) : RGB(185, 185, 185));
+                RECT edit = {row.right - 44, row.top + 4, row.right - 12, row.bottom - 4};
+                DrawTextW(draw->hDC, L"...", -1, &edit, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            }
+            return TRUE;
+        }
+
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            HBRUSH bg = CreateSolidBrush(RGB(28, 28, 28));
+            FillRect(hdc, &rc, bg);
+            DeleteObject(bg);
+            RECT tabs = {0, 0, rc.right, 56};
+            DrawManagerTabs(hdc, tabs);
+            if (g_manager_tab == 1) {
+                SelectObject(hdc, g_font);
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, RGB(190, 190, 190));
+                RECT hint = {44, 108, rc.right - 44, 144};
+                DrawTextW(hdc, L"Toolbar appearance", -1, &hint, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            EndPaint(hwnd, &ps);
             return 0;
         }
 
@@ -1131,7 +1387,7 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             int gutter = 28;
             int footer_h = 74;
             int left_w = std::max(300, std::min(430, w / 3));
-            int list_top = 50;
+            int list_top = 92;
             int list_bottom = std::max(list_top + 150, h - footer_h - 22);
             int footer_y = list_bottom + 14;
 
@@ -1143,10 +1399,10 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             int icon_w = std::max(120, field_w / 2 - 44);
             int color_x = field_x + icon_w + 72;
             int color_w = std::max(120, w - color_x - margin);
-            int value_top = 190;
+            int value_top = 232;
             int value_bottom = std::max(value_top + 160, h - 156);
 
-            MoveWindow(g_lbl_buttons, margin, 24, left_w - margin * 2, 22, TRUE);
+            MoveWindow(g_lbl_buttons, margin, 66, left_w - margin * 2, 22, TRUE);
             MoveWindow(g_btn_list, margin, list_top, left_w - margin * 2, list_bottom - list_top, TRUE);
 
             MoveWindow(GetDlgItem(hwnd, IDC_NEW_BUTTON), margin, footer_y, 112, 30, TRUE);
@@ -1155,30 +1411,33 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             MoveWindow(GetDlgItem(hwnd, IDC_UP_BUTTON), margin, footer_y + 36, 58, 30, TRUE);
             MoveWindow(GetDlgItem(hwnd, IDC_DOWN_BUTTON), margin + 68, footer_y + 36, 76, 30, TRUE);
 
-            MoveWindow(g_lbl_name, right_x, 24, label_w, 22, TRUE);
-            MoveWindow(g_name_edit, field_x, 20, field_w, row_h, TRUE);
-            MoveWindow(g_lbl_tip, right_x, 62, label_w, 22, TRUE);
-            MoveWindow(g_tip_edit, field_x, 58, field_w, row_h, TRUE);
-            MoveWindow(g_lbl_icon, right_x, 100, label_w, 22, TRUE);
-            MoveWindow(g_icon_edit, field_x, 96, icon_w, row_h, TRUE);
-            MoveWindow(g_lbl_color, field_x + icon_w + 18, 100, 54, 22, TRUE);
-            MoveWindow(g_color_edit, color_x, 96, color_w, row_h, TRUE);
-            MoveWindow(g_lbl_action, right_x, 138, label_w, 22, TRUE);
-            MoveWindow(g_action_edit, field_x, 134, std::min(220, field_w), row_h, TRUE);
+            MoveWindow(g_lbl_name, right_x, 66, label_w, 22, TRUE);
+            MoveWindow(g_name_edit, field_x, 62, field_w, row_h, TRUE);
+            MoveWindow(g_lbl_tip, right_x, 104, label_w, 22, TRUE);
+            MoveWindow(g_tip_edit, field_x, 100, field_w, row_h, TRUE);
+            MoveWindow(g_lbl_icon, right_x, 142, label_w, 22, TRUE);
+            MoveWindow(g_icon_edit, field_x, 138, std::max(90, icon_w - 82), row_h, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_ICON_PICK_BUTTON), field_x + std::max(90, icon_w - 82) + 8, 138, 74, row_h, TRUE);
+            MoveWindow(g_lbl_color, field_x + icon_w + 18, 142, 54, 22, TRUE);
+            MoveWindow(g_color_edit, color_x, 138, std::max(90, color_w - 84), row_h, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_COLOR_PICK_BUTTON), color_x + std::max(90, color_w - 84) + 8, 138, 76, row_h, TRUE);
+            MoveWindow(g_lbl_action, right_x, 180, label_w, 22, TRUE);
+            MoveWindow(g_action_edit, field_x, 176, std::min(220, field_w), row_h, TRUE);
             MoveWindow(g_lbl_value, right_x, value_top + 4, label_w, 22, TRUE);
             MoveWindow(g_value_edit, field_x, value_top, field_w, value_bottom - value_top, TRUE);
 
             MoveWindow(g_lbl_help_actions, field_x, value_bottom + 12, field_w, 22, TRUE);
             MoveWindow(g_lbl_help_icons, field_x, value_bottom + 36, field_w, 42, TRUE);
 
-            int settings_y = std::max(value_bottom + 88, h - 58);
-            MoveWindow(g_lbl_size, right_x, settings_y + 4, 96, 22, TRUE);
-            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_MINUS), right_x + 100, settings_y, 34, 30, TRUE);
-            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_PLUS), right_x + 140, settings_y, 34, 30, TRUE);
-            MoveWindow(g_lbl_spacing, right_x + 198, settings_y + 4, 72, 22, TRUE);
-            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_MINUS), right_x + 270, settings_y, 34, 30, TRUE);
-            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_PLUS), right_x + 310, settings_y, 34, 30, TRUE);
-            MoveWindow(GetDlgItem(hwnd, IDCANCEL), w - margin - 82, settings_y, 82, 30, TRUE);
+            int settings_y = g_manager_tab == 1 ? 160 : std::max(value_bottom + 88, h - 58);
+            int settings_x = g_manager_tab == 1 ? 46 : right_x;
+            MoveWindow(g_lbl_size, settings_x, settings_y + 4, 130, 22, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_MINUS), settings_x + 150, settings_y, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SIZE_PLUS), settings_x + 190, settings_y, 34, 30, TRUE);
+            MoveWindow(g_lbl_spacing, settings_x, settings_y + 64, 130, 22, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_MINUS), settings_x + 150, settings_y + 60, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDC_SPACE_PLUS), settings_x + 190, settings_y + 60, 34, 30, TRUE);
+            MoveWindow(GetDlgItem(hwnd, IDCANCEL), w - margin - 82, h - 52, 82, 30, TRUE);
             return 0;
         }
 
@@ -1187,6 +1446,18 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             info->ptMinTrackSize.x = 820;
             info->ptMinTrackSize.y = 620;
             return 0;
+        }
+
+        case WM_LBUTTONDOWN: {
+            int y = GET_Y_LPARAM(lparam);
+            int x = GET_X_LPARAM(lparam);
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            if (y >= 0 && y < 56) {
+                ShowManagerTab(hwnd, x < rc.right / 2 ? 0 : 1);
+                return 0;
+            }
+            break;
         }
 
         case WM_COMMAND: {
@@ -1220,6 +1491,48 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 if (cmd == 4) SetWindowTextW(g_action_edit, L"script");
                 if (cmd == 5) SetWindowTextW(g_action_edit, L"scriptfile");
                 SetFocus(g_name_edit);
+                return 0;
+            }
+            if (id == IDC_ICON_PICK_BUTTON) {
+                const wchar_t* icons[] = {
+                    L"Text / keep current", L"camera", L"search", L"scissors", L"film", L"trash",
+                    L"wand", L"zap", L"play", L"box", L"code", L"refresh", L"repeat",
+                    L"printer", L"grid-3x3", L"flag", L"share-alt", L"move-horizontal"
+                };
+                HMENU menu = CreatePopupMenu();
+                for (UINT i = 0; i < sizeof(icons) / sizeof(icons[0]); ++i) {
+                    AppendMenuW(menu, MF_STRING, 100 + i, icons[i]);
+                }
+                RECT pick_rc = {};
+                GetWindowRect(GetDlgItem(hwnd, IDC_ICON_PICK_BUTTON), &pick_rc);
+                int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pick_rc.left, pick_rc.bottom + 4, 0, hwnd, nullptr);
+                DestroyMenu(menu);
+                if (cmd > 100) {
+                    SetWindowTextW(g_icon_edit, icons[cmd - 100]);
+                    SaveManagerFields(SelectedManagerIndex());
+                }
+                return 0;
+            }
+            if (id == IDC_COLOR_PICK_BUTTON) {
+                struct ColorChoice { const wchar_t* label; const wchar_t* value; };
+                ColorChoice colors[] = {
+                    {L"Red", L"rgba(252, 67, 88, 1)"}, {L"Yellow", L"rgba(248, 231, 28, 1)"},
+                    {L"Cyan", L"rgba(12, 209, 243, 1)"}, {L"Green", L"rgba(126, 211, 33, 1)"},
+                    {L"Orange", L"rgba(245, 166, 35, 1)"}, {L"Blue", L"rgba(74, 144, 226, 1)"},
+                    {L"Magenta", L"rgba(189, 16, 224, 1)"}, {L"White", L"rgba(235, 235, 235, 1)"}
+                };
+                HMENU menu = CreatePopupMenu();
+                for (UINT i = 0; i < sizeof(colors) / sizeof(colors[0]); ++i) {
+                    AppendMenuW(menu, MF_STRING, 200 + i, colors[i].label);
+                }
+                RECT pick_rc = {};
+                GetWindowRect(GetDlgItem(hwnd, IDC_COLOR_PICK_BUTTON), &pick_rc);
+                int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pick_rc.left, pick_rc.bottom + 4, 0, hwnd, nullptr);
+                DestroyMenu(menu);
+                if (cmd >= 200) {
+                    SetWindowTextW(g_color_edit, colors[cmd - 200].value);
+                    SaveManagerFields(SelectedManagerIndex());
+                }
                 return 0;
             }
             if (id == IDC_SAVE_BUTTON) {

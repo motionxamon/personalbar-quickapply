@@ -33,10 +33,11 @@ function New-Button {
 function Get-AutoIcon {
     param([string]$Name, [string]$Action, [string]$Icon)
     $n = ($Name + " " + $Icon).ToLowerInvariant()
-    if ($Icon -match '^(videocam|camera|search|content_cut|scissors|film|delete|trash|auto_fix_high|wand|bolt|zap|play_arrow|play|layers|box|code|refresh|repeat|print|printer|apps|grid-3x3|flag|share|share-alt|swap_horiz|move-horizontal)$') {
+    if ($Icon -match '^(videocam|camera|photo_camera|search|content_cut|scissors|film|delete|trash|auto_fix_high|wand|bolt|zap|play_arrow|play|layers|box|code|refresh|repeat|print|printer|apps|grid-3x3|flag|share|share-alt|swap_horiz|move-horizontal)$') {
         return $Icon
     }
     if ($n -match 'camera|cam rig') { return "videocam" }
+    if ($n -match 'screenshot|snapshot|screen') { return "photo_camera" }
     if ($n -match 'reveal|search|source') { return "search" }
     if ($n -match 'trash|clean|delete|remove') { return "delete" }
     if ($n -match 'auto.?trace|cut|scissor|split') { return "content_cut" }
@@ -98,9 +99,23 @@ $revealScript = @'
 })();
 '@
 
+$screenshotPngScript = @'
+(function(){
+    var c = app.project.activeItem;
+    if (!(c instanceof CompItem)) { alert("Open or select a composition first."); return; }
+    var now = new Date();
+    function pad(v) { return (v < 10 ? "0" : "") + v; }
+    var name = "AE_Screenshot_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + ".png";
+    var f = File(Folder.desktop.fsName + "/" + name);
+    c.saveFrameToPng(c.time, f);
+    alert("Saved screenshot:\n" + f.fsName);
+})();
+'@
+
 $buttons = @(
     (New-Button -Name "Orbit Camera" -Tooltip "Create camera with orbit null" -Icon "camera" -Color "rgba(120, 255, 95, 1)" -Action "script" -Value $orbitScript),
-    (New-Button -Name "Reveal Source" -Tooltip "Reveal selected layer source in Project" -Icon "search" -Color "rgba(66, 160, 255, 1)" -Action "script" -Value $revealScript)
+    (New-Button -Name "Reveal Source" -Tooltip "Reveal selected layer source in Project" -Icon "search" -Color "rgba(66, 160, 255, 1)" -Action "script" -Value $revealScript),
+    (New-Button -Name "Screenshot PNG" -Tooltip "Save current comp frame as PNG to Desktop" -Icon "photo_camera" -Color "rgba(235, 235, 235, 1)" -Action "script" -Value $screenshotPngScript)
 )
 
 if (Test-Path -LiteralPath $KbarPath) {

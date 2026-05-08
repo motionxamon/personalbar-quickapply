@@ -281,9 +281,16 @@ std::wstring Lower(std::wstring value) {
 }
 
 std::wstring GetEditText() {
+    if (!g_edit) {
+        return L"";
+    }
     wchar_t buffer[512] = {};
     GetWindowTextW(g_edit, buffer, 512);
     return buffer;
+}
+
+bool SearchListVisible() {
+    return !GetEditText().empty();
 }
 
 std::wstring FilterText(const std::wstring& query, std::wstring* forced_kind) {
@@ -341,7 +348,10 @@ void FilterItems() {
         g_selected = 0;
     }
 
-    InvalidateRect(g_results, nullptr, TRUE);
+    if (g_results) {
+        ShowWindow(g_results, SearchListVisible() ? SW_SHOW : SW_HIDE);
+        InvalidateRect(g_results, nullptr, TRUE);
+    }
     if (g_buttons) {
         InvalidateRect(g_buttons, nullptr, TRUE);
     }
@@ -688,7 +698,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         return true;
     };
 
-    if (name == L"camera" || name == L"video" || name == L"videocam") {
+    if (name == L"camera" || name == L"video" || name == L"videocam" || name == L"photo_camera") {
         Rectangle(hdc, rc.left + w / 6, cy - h / 5, rc.left + w * 2 / 3, cy + h / 5);
         MoveToEx(hdc, rc.left + w * 2 / 3, cy - h / 8, nullptr);
         LineTo(hdc, rc.right - w / 8, cy - h / 3);
@@ -1530,7 +1540,7 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             }
             if (id == IDC_ICON_PICK_BUTTON) {
                 const wchar_t* icons[] = {
-                    L"Text / keep current", L"videocam", L"search", L"content_cut", L"film", L"delete",
+                    L"Text / keep current", L"videocam", L"photo_camera", L"search", L"content_cut", L"film", L"delete",
                     L"auto_fix_high", L"bolt", L"play_arrow", L"layers", L"code", L"refresh", L"repeat",
                     L"print", L"apps", L"flag", L"share", L"swap_horiz"
                 };
@@ -1656,6 +1666,34 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     return CallWindowProcW(g_old_edit_proc, hwnd, msg, wparam, lparam);
 }
 
+void LayoutPopup(HWND hwnd, int w, int h) {
+    bool show_results = SearchListVisible();
+    MoveWindow(g_tools, 13, 10, 100, 39, TRUE);
+    MoveWindow(g_edit, 124, 11, std::max(160, w - 148), 38, TRUE);
+    MoveWindow(g_buttons, 13, 58, std::max(220, w - 26), 126, TRUE);
+    MoveWindow(g_results, 13, 194, std::max(220, w - 26), show_results ? std::max(110, h - 239) : 0, TRUE);
+    ShowWindow(g_results, show_results ? SW_SHOW : SW_HIDE);
+    if (g_settings) {
+        RECT window_rc = {};
+        GetWindowRect(hwnd, &window_rc);
+        SetWindowPos(g_settings, nullptr, window_rc.left + 13, window_rc.top + 55, 330, 174, SWP_NOZORDER);
+    }
+}
+
+void FitPopupToSearchState() {
+    if (!g_hwnd) {
+        return;
+    }
+    RECT rc = {};
+    GetWindowRect(g_hwnd, &rc);
+    int w = rc.right - rc.left;
+    int target_h = SearchListVisible() ? 620 : 244;
+    if ((rc.bottom - rc.top) != target_h) {
+        SetWindowPos(g_hwnd, HWND_TOPMOST, rc.left, rc.top, w, target_h, SWP_NOACTIVATE);
+    }
+    LayoutPopup(g_hwnd, w, target_h);
+}
+
 LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
         case WM_CREATE: {
@@ -1685,6 +1723,7 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 HideSettings();
                 g_selected = 0;
                 FilterItems();
+                FitPopupToSearchState();
                 return 0;
             }
             break;
@@ -1711,15 +1750,7 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         case WM_SIZE: {
             int w = LOWORD(lparam);
             int h = HIWORD(lparam);
-            MoveWindow(g_tools, 13, 10, 100, 39, TRUE);
-            MoveWindow(g_edit, 124, 11, std::max(160, w - 148), 38, TRUE);
-            MoveWindow(g_buttons, 13, 58, std::max(220, w - 26), 126, TRUE);
-            MoveWindow(g_results, 13, 194, std::max(220, w - 26), std::max(110, h - 239), TRUE);
-            if (g_settings) {
-                RECT window_rc = {};
-                GetWindowRect(g_hwnd, &window_rc);
-                SetWindowPos(g_settings, nullptr, window_rc.left + 13, window_rc.top + 55, 330, 174, SWP_NOZORDER);
-            }
+            LayoutPopup(hwnd, w, h);
             return 0;
         }
 
@@ -1838,7 +1869,7 @@ void PBQA_ShowPopupWindow() {
     RECT work = {};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     int w = 724;
-    int h = 620;
+    int h = 244;
     int x = work.left + ((work.right - work.left) - w) / 2;
     int y = work.top + 110;
     if (g_keep_at_cursor) {
@@ -1855,6 +1886,7 @@ void PBQA_ShowPopupWindow() {
         SetWindowTextW(g_edit, L"");
         g_selected = 0;
         FilterItems();
+        FitPopupToSearchState();
         if (g_settings) {
             ShowWindow(g_settings, SW_HIDE);
         }

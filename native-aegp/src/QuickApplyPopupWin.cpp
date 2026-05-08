@@ -379,6 +379,21 @@ void HideSettings() {
     }
 }
 
+void ToggleSearchSettings() {
+    if (!g_settings || !g_hwnd) {
+        return;
+    }
+    if (IsWindowVisible(g_settings)) {
+        ShowWindow(g_settings, SW_HIDE);
+        return;
+    }
+    RECT window_rc = {};
+    GetWindowRect(g_hwnd, &window_rc);
+    SetWindowPos(g_settings, HWND_TOPMOST, window_rc.left + 13, window_rc.top + 55, 330, 174, SWP_SHOWWINDOW);
+    ShowWindow(g_settings, SW_SHOWNORMAL);
+    SetForegroundWindow(g_hwnd);
+}
+
 std::wstring WindowText(HWND hwnd) {
     int len = GetWindowTextLengthW(hwnd);
     if (len <= 0) {
@@ -548,7 +563,7 @@ void ApplyButton(int index) {
     }
 }
 
-void PaintToolbarButton(HDC hdc, RECT rc) {
+void PaintToolbarButton(HDC hdc, RECT rc, bool editor_button) {
     HBRUSH bg = CreateSolidBrush(RGB(35, 35, 35));
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
@@ -561,15 +576,27 @@ void PaintToolbarButton(HDC hdc, RECT rc) {
     SelectObject(hdc, old_pen);
     DeleteObject(pen);
 
-    HPEN gear_pen = CreatePen(PS_SOLID, 3, RGB(195, 195, 195));
+    HPEN gear_pen = CreatePen(PS_SOLID, 2, RGB(195, 195, 195));
     HGDIOBJ gear_old = SelectObject(hdc, gear_pen);
     int cx = (rc.left + rc.right) / 2;
     int cy = (rc.top + rc.bottom) / 2;
-    MoveToEx(hdc, cx - 9, cy + 10, nullptr);
-    LineTo(hdc, cx + 8, cy - 7);
-    Ellipse(hdc, cx + 4, cy - 12, cx + 15, cy - 1);
-    MoveToEx(hdc, cx - 12, cy + 7, nullptr);
-    LineTo(hdc, cx - 6, cy + 13);
+    if (editor_button) {
+        MoveToEx(hdc, cx - 9, cy + 10, nullptr);
+        LineTo(hdc, cx + 8, cy - 7);
+        Ellipse(hdc, cx + 4, cy - 12, cx + 15, cy - 1);
+        MoveToEx(hdc, cx - 12, cy + 7, nullptr);
+        LineTo(hdc, cx - 6, cy + 13);
+    } else {
+        Ellipse(hdc, cx - 11, cy - 11, cx + 11, cy + 11);
+        MoveToEx(hdc, cx - 15, cy, nullptr);
+        LineTo(hdc, cx + 15, cy);
+        MoveToEx(hdc, cx, cy - 15, nullptr);
+        LineTo(hdc, cx, cy + 15);
+        MoveToEx(hdc, cx - 5, cy - 5, nullptr);
+        LineTo(hdc, cx + 5, cy + 5);
+        MoveToEx(hdc, cx + 5, cy - 5, nullptr);
+        LineTo(hdc, cx - 5, cy + 5);
+    }
     SelectObject(hdc, gear_old);
     DeleteObject(gear_pen);
 }
@@ -583,13 +610,21 @@ LRESULT CALLBACK ToolsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         HBRUSH bg = CreateSolidBrush(kBg);
         FillRect(hdc, &rc, bg);
         DeleteObject(bg);
-        RECT btn = {0, 0, 46, 38};
-        PaintToolbarButton(hdc, btn);
+        RECT filters = {0, 0, 46, 38};
+        RECT editor = {52, 0, 98, 38};
+        PaintToolbarButton(hdc, filters, false);
+        PaintToolbarButton(hdc, editor, true);
         EndPaint(hwnd, &ps);
         return 0;
     }
     if (msg == WM_LBUTTONDOWN) {
-        ShowManager();
+        int x = GET_X_LPARAM(lparam);
+        if (x < 50) {
+            ToggleSearchSettings();
+        } else {
+            HideSettings();
+            ShowManager();
+        }
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -653,7 +688,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         return true;
     };
 
-    if (name == L"camera" || name == L"video") {
+    if (name == L"camera" || name == L"video" || name == L"videocam") {
         Rectangle(hdc, rc.left + w / 6, cy - h / 5, rc.left + w * 2 / 3, cy + h / 5);
         MoveToEx(hdc, rc.left + w * 2 / 3, cy - h / 8, nullptr);
         LineTo(hdc, rc.right - w / 8, cy - h / 3);
@@ -667,7 +702,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         LineTo(hdc, rc.right - w / 8, rc.bottom - h / 8);
         return finish();
     }
-    if (name == L"scissors" || name == L"cut") {
+    if (name == L"scissors" || name == L"cut" || name == L"content_cut") {
         Ellipse(hdc, rc.left + 2, cy - 8, rc.left + 12, cy + 2);
         Ellipse(hdc, rc.left + 2, cy + 4, rc.left + 12, cy + 14);
         MoveToEx(hdc, rc.left + 12, cy, nullptr); LineTo(hdc, rc.right - 3, rc.top + 4);
@@ -693,13 +728,13 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         }
         return finish();
     }
-    if (name == L"printer") {
+    if (name == L"printer" || name == L"print") {
         Rectangle(hdc, rc.left + 5, cy - 3, rc.right - 5, cy + 9);
         Rectangle(hdc, rc.left + 9, rc.top + 5, rc.right - 9, cy - 3);
         Rectangle(hdc, rc.left + 10, cy + 6, rc.right - 10, rc.bottom - 4);
         return finish();
     }
-    if (name == L"grid" || name == L"grid-3x3") {
+    if (name == L"grid" || name == L"grid-3x3" || name == L"apps") {
         HGDIOBJ old_fill = SelectObject(hdc, brush);
         for (int yy = 0; yy < 3; ++yy) {
             for (int xx = 0; xx < 3; ++xx) {
@@ -714,7 +749,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         Rectangle(hdc, rc.left + 4, rc.top + 11, rc.right - 9, rc.bottom - 4);
         return finish();
     }
-    if (name == L"play") {
+    if (name == L"play" || name == L"play_arrow") {
         HGDIOBJ old_fill = SelectObject(hdc, brush);
         POINT pts[3] = {{rc.left + 8, rc.top + 5}, {rc.left + 8, rc.bottom - 5}, {rc.right - 5, cy}};
         Polygon(hdc, pts, 3);
@@ -728,7 +763,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         SelectObject(hdc, old_fill);
         return finish();
     }
-    if (name == L"wand" || name == L"sparkles") {
+    if (name == L"wand" || name == L"sparkles" || name == L"auto_fix_high") {
         MoveToEx(hdc, rc.left + 7, rc.bottom - 6, nullptr); LineTo(hdc, rc.right - 8, rc.top + 7);
         MoveToEx(hdc, rc.right - 10, rc.top + 4, nullptr); LineTo(hdc, rc.right - 10, rc.top + 14);
         MoveToEx(hdc, rc.right - 15, rc.top + 9, nullptr); LineTo(hdc, rc.right - 5, rc.top + 9);
@@ -749,7 +784,7 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         MoveToEx(hdc, rc.left + 12, cy, nullptr); LineTo(hdc, rc.right - 12, rc.bottom - 7);
         return finish();
     }
-    if (name == L"move-horizontal") {
+    if (name == L"move-horizontal" || name == L"swap_horiz") {
         MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.right - 5, cy);
         MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.left + 11, cy - 6); MoveToEx(hdc, rc.left + 5, cy, nullptr); LineTo(hdc, rc.left + 11, cy + 6);
         MoveToEx(hdc, rc.right - 5, cy, nullptr); LineTo(hdc, rc.right - 11, cy - 6); MoveToEx(hdc, rc.right - 5, cy, nullptr); LineTo(hdc, rc.right - 11, cy + 6);
@@ -1495,9 +1530,9 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             }
             if (id == IDC_ICON_PICK_BUTTON) {
                 const wchar_t* icons[] = {
-                    L"Text / keep current", L"camera", L"search", L"scissors", L"film", L"trash",
-                    L"wand", L"zap", L"play", L"box", L"code", L"refresh", L"repeat",
-                    L"printer", L"grid-3x3", L"flag", L"share-alt", L"move-horizontal"
+                    L"Text / keep current", L"videocam", L"search", L"content_cut", L"film", L"delete",
+                    L"auto_fix_high", L"bolt", L"play_arrow", L"layers", L"code", L"refresh", L"repeat",
+                    L"print", L"apps", L"flag", L"share", L"swap_horiz"
                 };
                 HMENU menu = CreatePopupMenu();
                 for (UINT i = 0; i < sizeof(icons) / sizeof(icons[0]); ++i) {
@@ -1629,12 +1664,12 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
-            g_tools = CreateWindowExW(0, L"PBQA_Tools", L"", WS_CHILD | WS_VISIBLE, 13, 10, 47, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-            g_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 72, 11, 628, 38, hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
+            g_tools = CreateWindowExW(0, L"PBQA_Tools", L"", WS_CHILD | WS_VISIBLE, 13, 10, 100, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 124, 11, 576, 38, hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
             g_buttons = CreateWindowExW(0, L"PBQA_Buttons", L"", WS_CHILD | WS_VISIBLE, 13, 58, 696, 126, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_results = CreateWindowExW(0, L"PBQA_Results", L"", WS_CHILD | WS_VISIBLE, 13, 194, 696, 310, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_settings = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Settings", L"", WS_POPUP, 0, 0, 330, 174, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-            g_manager = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Manager", L"PersonalBar Settings", WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, 0, 0, 760, 520, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+            g_manager = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Manager", L"PersonalBar Settings", WS_POPUP | WS_CAPTION | WS_THICKFRAME, 0, 0, 760, 520, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
 
             SendMessageW(g_edit, WM_SETFONT, reinterpret_cast<WPARAM>(g_font), TRUE);
             SendMessageW(g_edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search effects, presets, commands, tools..."));
@@ -1676,8 +1711,8 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         case WM_SIZE: {
             int w = LOWORD(lparam);
             int h = HIWORD(lparam);
-            MoveWindow(g_tools, 13, 10, 47, 39, TRUE);
-            MoveWindow(g_edit, 72, 11, std::max(160, w - 96), 38, TRUE);
+            MoveWindow(g_tools, 13, 10, 100, 39, TRUE);
+            MoveWindow(g_edit, 124, 11, std::max(160, w - 148), 38, TRUE);
             MoveWindow(g_buttons, 13, 58, std::max(220, w - 26), 126, TRUE);
             MoveWindow(g_results, 13, 194, std::max(220, w - 26), std::max(110, h - 239), TRUE);
             if (g_settings) {
@@ -1795,7 +1830,7 @@ void PBQA_ShowPopupWindow() {
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             kWindowClass,
             L"Quick Apply",
-            WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
+            WS_POPUP | WS_CAPTION | WS_THICKFRAME,
             CW_USEDEFAULT, CW_USEDEFAULT, 724, 620,
             nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     }

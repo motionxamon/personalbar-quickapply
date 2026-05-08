@@ -33,25 +33,25 @@ function New-Button {
 function Get-AutoIcon {
     param([string]$Name, [string]$Action, [string]$Icon)
     $n = ($Name + " " + $Icon).ToLowerInvariant()
-    if ($Icon -match '^(camera|search|scissors|film|trash|wand|zap|play|box|code|refresh|refresh-cw|repeat|printer|grid-3x3|flag|flag-checkered|share|share-alt|move-horizontal)$') {
+    if ($Icon -match '^(videocam|camera|search|content_cut|scissors|film|delete|trash|auto_fix_high|wand|bolt|zap|play_arrow|play|layers|box|code|refresh|repeat|print|printer|apps|grid-3x3|flag|share|share-alt|swap_horiz|move-horizontal)$') {
         return $Icon
     }
-    if ($n -match 'camera|cam rig') { return "camera" }
+    if ($n -match 'camera|cam rig') { return "videocam" }
     if ($n -match 'reveal|search|source') { return "search" }
-    if ($n -match 'trash|clean|delete|remove') { return "trash" }
-    if ($n -match 'auto.?trace|cut|scissor|split') { return "scissors" }
+    if ($n -match 'trash|clean|delete|remove') { return "delete" }
+    if ($n -match 'auto.?trace|cut|scissor|split') { return "content_cut" }
     if ($n -match 'film|video|footage') { return "film" }
-    if ($n -match 'reduce|print|render') { return "printer" }
-    if ($n -match 'grid|utility|util') { return "grid-3x3" }
+    if ($n -match 'reduce|print|render') { return "print" }
+    if ($n -match 'grid|utility|util') { return "apps" }
     if ($n -match 'loop|cycle|pingpong|refresh') { return "refresh" }
-    if ($n -match 'swap|width|height') { return "move-horizontal" }
+    if ($n -match 'swap|width|height') { return "swap_horiz" }
     if ($n -match 'exp|code|script|jsx') { return "code" }
-    if ($n -match 'pack|share|structure') { return "share-alt" }
+    if ($n -match 'pack|share|structure') { return "share" }
     if ($n -match 'universe|flag') { return "flag" }
-    if ($n -match 'solid|box|layer') { return "box" }
-    if ($n -match 'wiggle|random|magic|blur|preset') { return "wand" }
-    if ($Action -eq "menu") { return "play" }
-    if ($Action -eq "preset") { return "wand" }
+    if ($n -match 'solid|box|layer') { return "layers" }
+    if ($n -match 'wiggle|random|magic|blur|preset') { return "auto_fix_high" }
+    if ($Action -eq "menu") { return "play_arrow" }
+    if ($Action -eq "preset") { return "auto_fix_high" }
     if ($Action -eq "script") { return "code" }
     return $Icon
 }

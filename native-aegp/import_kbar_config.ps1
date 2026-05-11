@@ -99,23 +99,46 @@ $revealScript = @'
 })();
 '@
 
-$screenshotPngScript = @'
+$screenshotScript = @'
 (function(){
     var c = app.project.activeItem;
     if (!(c instanceof CompItem)) { alert("Open or select a composition first."); return; }
+    var choice = prompt("Screenshot target: clipboard, png, jpg", "clipboard");
+    if (!choice) { return; }
+    choice = choice.toLowerCase();
     var now = new Date();
     function pad(v) { return (v < 10 ? "0" : "") + v; }
-    var name = "AE_Screenshot_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + ".png";
-    var f = File(Folder.desktop.fsName + "/" + name);
-    c.saveFrameToPng(c.time, f);
-    alert("Saved screenshot:\n" + f.fsName);
+    function psq(path) { return "'" + path.replace(/'/g, "''") + "'"; }
+    var base = "AE_Screenshot_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    var png = File((choice === "clipboard" ? Folder.temp.fsName : Folder.desktop.fsName) + "/" + base + ".png");
+    c.saveFrameToPng(c.time, png);
+    if (choice === "png") {
+        alert("Saved PNG:\n" + png.fsName);
+        return;
+    }
+    if (choice === "jpg" || choice === "jpeg") {
+        var jpgPath = Folder.desktop.fsName + "/" + base + ".jpg";
+        var jpg = File(jpgPath);
+        var cmdJpg = 'powershell -NoProfile -STA -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Drawing; $img=[System.Drawing.Image]::FromFile(' + psq(png.fsName) + '); $img.Save(' + psq(jpgPath) + ', [System.Drawing.Imaging.ImageFormat]::Jpeg); $img.Dispose()"';
+        system.callSystem(cmdJpg);
+        if (jpg.exists) {
+            try { png.remove(); } catch(e) {}
+            alert("Saved JPG:\n" + jpg.fsName);
+        } else {
+            alert("Could not create JPG. PNG saved:\n" + png.fsName);
+        }
+        return;
+    }
+    var cmdClip = 'powershell -NoProfile -STA -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img=[System.Drawing.Image]::FromFile(' + psq(png.fsName) + '); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()"';
+    system.callSystem(cmdClip);
+    alert("Screenshot copied to clipboard.");
 })();
 '@
 
 $buttons = @(
     (New-Button -Name "Orbit Camera" -Tooltip "Create camera with orbit null" -Icon "camera" -Color "rgba(120, 255, 95, 1)" -Action "script" -Value $orbitScript),
     (New-Button -Name "Reveal Source" -Tooltip "Reveal selected layer source in Project" -Icon "search" -Color "rgba(66, 160, 255, 1)" -Action "script" -Value $revealScript),
-    (New-Button -Name "Screenshot PNG" -Tooltip "Save current comp frame as PNG to Desktop" -Icon "photo_camera" -Color "rgba(235, 235, 235, 1)" -Action "script" -Value $screenshotPngScript)
+    (New-Button -Name "Screenshot" -Tooltip "Copy current frame to clipboard or save PNG/JPG" -Icon "photo_camera" -Color "rgba(235, 235, 235, 1)" -Action "script" -Value $screenshotScript)
 )
 
 if (Test-Path -LiteralPath $KbarPath) {

@@ -4,6 +4,7 @@
 #include <windowsx.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cwctype>
 #include <sstream>
 #include <string>
@@ -47,6 +48,7 @@ HWND g_hwnd = nullptr;
 HWND g_edit = nullptr;
 HWND g_results = nullptr;
 HWND g_tools = nullptr;
+HWND g_screenshot_button = nullptr;
 HWND g_buttons = nullptr;
 HWND g_settings = nullptr;
 HWND g_manager = nullptr;
@@ -116,11 +118,11 @@ void LoadSettings() {
     g_keep_at_cursor = GetPrivateProfileIntW(L"Search", L"AtCursor", 0, path.c_str()) != 0;
     g_button_size = GetPrivateProfileIntW(L"Toolbar", L"ButtonSize", 138, path.c_str());
     g_button_spacing = GetPrivateProfileIntW(L"Toolbar", L"Spacing", 8, path.c_str());
-    if (g_button_size < 72) {
-        g_button_size = 72;
+    if (g_button_size < 36) {
+        g_button_size = 36;
     }
-    if (g_button_size > 260) {
-        g_button_size = 260;
+    if (g_button_size > 96) {
+        g_button_size = 96;
     }
     if (g_button_spacing < 0) {
         g_button_spacing = 0;
@@ -551,6 +553,170 @@ PBQA_ResultItem CustomToItem(const CustomButton& button) {
     return item;
 }
 
+bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color);
+
+const wchar_t* MaterialPath(const std::wstring& raw_name) {
+    std::wstring name = Lower(raw_name);
+    if (name == L"camera") name = L"videocam";
+    if (name == L"scissors" || name == L"cut") name = L"content_cut";
+    if (name == L"trash") name = L"delete";
+    if (name == L"wand" || name == L"sparkles") name = L"auto_fix_high";
+    if (name == L"zap") name = L"bolt";
+    if (name == L"play") name = L"play_arrow";
+    if (name == L"box") name = L"layers";
+    if (name == L"printer") name = L"print";
+    if (name == L"grid" || name == L"grid-3x3") name = L"apps";
+    if (name == L"share-alt") name = L"share";
+    if (name == L"move-horizontal") name = L"swap_horiz";
+
+    if (name == L"photo_camera") return L"M14.12 4l1.83 2H20v12H4V6h4.05l1.83-2h4.24M15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2zm-3 7c1.65 0 3 1.35 3 3s-1.35 3-3 3s-3-1.35-3-3s1.35-3 3-3m0-2c-2.76 0-5 2.24-5 5s2.24 5 5 5s5-2.24 5-5s-2.24-5-5-5z";
+    if (name == L"content_cut") return L"M9.64 7.64c.23-.5.36-1.05.36-1.64c0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4s4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5s.5.22.5.5s-.22.5-.5.5zM19 3l-6 6l2 2l7-7V3h-3z";
+    if (name == L"delete") return L"M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z";
+    if (name == L"auto_fix_high") return L"M20 7l.94-2.06L23 4l-2.06-.94L20 1l-.94 2.06L17 4l2.06.94zM8.5 7l.94-2.06L11.5 4l-2.06-.94L8.5 1l-.94 2.06L5.5 4l2.06.94zM20 12.5l-.94 2.06l-2.06.94l2.06.94l.94 2.06l.94-2.06L23 15.5l-2.06-.94zm-2.29-3.38l-2.83-2.83c-.2-.19-.45-.29-.71-.29c-.26 0-.51.1-.71.29L2.29 17.46a.996.996 0 0 0 0 1.41l2.83 2.83c.2.2.45.3.71.3s.51-.1.71-.29l11.17-11.17c.39-.39.39-1.03 0-1.42zm-3.54-.7l1.41 1.41L14.41 11L13 9.59l1.17-1.17zM5.83 19.59l-1.41-1.41L11.59 11L13 12.41l-7.17 7.18z";
+    if (name == L"bolt") return L"M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66C12.97 17.55 11 21 11 21z";
+    if (name == L"play_arrow") return L"M10 8.64L15.27 12L10 15.36V8.64M8 5v14l11-7L8 5z";
+    if (name == L"layers") return L"M11.99 18.54l-7.37-5.73L3 14.07l9 7l9-7l-1.63-1.27zM12 16l7.36-5.73L21 9l-9-7l-9 7l1.63 1.27L12 16zm0-11.47L17.74 9L12 13.47L6.26 9L12 4.53z";
+    if (name == L"code") return L"M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6l6 6l1.4-1.4zm5.2 0l4.6-4.6l-4.6-4.6L16 6l6 6l-6 6l-1.4-1.4z";
+    if (name == L"refresh") return L"M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z";
+    if (name == L"repeat") return L"M7 7h10v3l4-4l-4-4v3H5v6h2V7zm10 10H7v-3l-4 4l4 4v-3h12v-6h-2v4z";
+    if (name == L"print") return L"M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zM8 5h8v3H8V5zm8 12v2H8v-4h8v2zm2-2v-2H6v2H4v-4c0-.55.45-1 1-1h14c.55 0 1 .45 1 1v4h-2z";
+    if (name == L"apps") return L"M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z";
+    if (name == L"flag") return L"M12.36 6l.4 2H18v6h-3.36l-.4-2H7V6h5.36M14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6L14 4z";
+    if (name == L"share") return L"M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81c1.66 0 3-1.34 3-3s-1.34-3-3-3s-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65c0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92zM18 4c.55 0 1 .45 1 1s-.45 1-1 1s-1-.45-1-1s.45-1 1-1zM6 13c-.55 0-1-.45-1-1s.45-1 1-1s1 .45 1 1s-.45 1-1 1zm12 7.02c-.55 0-1-.45-1-1s.45-1 1-1s1 .45 1 1s-.45 1-1 1z";
+    if (name == L"swap_horiz") return L"M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z";
+    if (name == L"tune") return L"M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z";
+    if (name == L"dashboard_customize") return L"M3 11h8V3H3v8zm2-6h4v4H5V5zm8-2v8h8V3h-8zm6 6h-4V5h4v4zM3 21h8v-8H3v8zm2-6h4v4H5v-4zm13-2h-2v3h-3v2h3v3h2v-3h3v-2h-3z";
+    if (name == L"videocam") return L"M15 8v8H5V8h10m1-2H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4V7c0-.55-.45-1-1-1z";
+    return nullptr;
+}
+
+bool IsPathCommand(wchar_t ch) {
+    return (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
+}
+
+void SkipPathSpace(const wchar_t*& p) {
+    while (*p == L' ' || *p == L'\t' || *p == L'\n' || *p == L'\r' || *p == L',') {
+        ++p;
+    }
+}
+
+bool ReadPathNumber(const wchar_t*& p, double* value) {
+    SkipPathSpace(p);
+    if (!*p) return false;
+    wchar_t* end = nullptr;
+    *value = wcstod(p, &end);
+    if (end == p) return false;
+    p = end;
+    return true;
+}
+
+POINT SvgPoint(double x, double y, RECT rc) {
+    int box = std::min<int>(rc.right - rc.left, rc.bottom - rc.top);
+    double scale = static_cast<double>(box) / 24.0;
+    double ox = rc.left + ((rc.right - rc.left) - box) / 2.0;
+    double oy = rc.top + ((rc.bottom - rc.top) - box) / 2.0;
+    return {
+        static_cast<LONG>(std::lround(ox + x * scale)),
+        static_cast<LONG>(std::lround(oy + y * scale))
+    };
+}
+
+bool DrawMaterialSvgPath(HDC hdc, RECT rc, const wchar_t* path, COLORREF color) {
+    if (!path) return false;
+    const wchar_t* p = path;
+    wchar_t cmd = 0;
+    double x = 0, y = 0, sx = 0, sy = 0;
+    bool has_path = false;
+
+    HBRUSH brush = CreateSolidBrush(color);
+    HGDIOBJ old_brush = SelectObject(hdc, brush);
+    HGDIOBJ old_pen = SelectObject(hdc, GetStockObject(NULL_PEN));
+    int old_fill = SetPolyFillMode(hdc, WINDING);
+    BeginPath(hdc);
+
+    while (*p) {
+        SkipPathSpace(p);
+        if (!*p) break;
+        if (IsPathCommand(*p)) {
+            cmd = *p++;
+        }
+        bool rel = cmd >= L'a' && cmd <= L'z';
+        wchar_t op = static_cast<wchar_t>(towlower(cmd));
+        if (op == L'z') {
+            CloseFigure(hdc);
+            x = sx; y = sy;
+            cmd = 0;
+            continue;
+        }
+        if (op == L'a') {
+            EndPath(hdc);
+            AbortPath(hdc);
+            SetPolyFillMode(hdc, old_fill);
+            SelectObject(hdc, old_pen);
+            SelectObject(hdc, old_brush);
+            DeleteObject(brush);
+            return false;
+        }
+
+        while (*p && !IsPathCommand(*p)) {
+            if (op == L'm' || op == L'l') {
+                double nx, ny;
+                if (!ReadPathNumber(p, &nx) || !ReadPathNumber(p, &ny)) break;
+                if (rel) { nx += x; ny += y; }
+                POINT pt = SvgPoint(nx, ny, rc);
+                if (op == L'm' && !has_path) {
+                    MoveToEx(hdc, pt.x, pt.y, nullptr);
+                    sx = nx; sy = ny; has_path = true;
+                } else {
+                    LineTo(hdc, pt.x, pt.y);
+                }
+                x = nx; y = ny;
+                if (op == L'm') op = L'l';
+            } else if (op == L'h') {
+                double nx;
+                if (!ReadPathNumber(p, &nx)) break;
+                if (rel) nx += x;
+                POINT pt = SvgPoint(nx, y, rc);
+                LineTo(hdc, pt.x, pt.y);
+                x = nx;
+            } else if (op == L'v') {
+                double ny;
+                if (!ReadPathNumber(p, &ny)) break;
+                if (rel) ny += y;
+                POINT pt = SvgPoint(x, ny, rc);
+                LineTo(hdc, pt.x, pt.y);
+                y = ny;
+            } else if (op == L'c') {
+                double x1, y1, x2, y2, x3, y3;
+                if (!ReadPathNumber(p, &x1) || !ReadPathNumber(p, &y1) ||
+                    !ReadPathNumber(p, &x2) || !ReadPathNumber(p, &y2) ||
+                    !ReadPathNumber(p, &x3) || !ReadPathNumber(p, &y3)) break;
+                if (rel) { x1 += x; y1 += y; x2 += x; y2 += y; x3 += x; y3 += y; }
+                POINT pts[3] = {SvgPoint(x1, y1, rc), SvgPoint(x2, y2, rc), SvgPoint(x3, y3, rc)};
+                PolyBezierTo(hdc, pts, 3);
+                x = x3; y = y3;
+            } else {
+                EndPath(hdc);
+                AbortPath(hdc);
+                SetPolyFillMode(hdc, old_fill);
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(brush);
+                return false;
+            }
+            SkipPathSpace(p);
+        }
+    }
+
+    EndPath(hdc);
+    FillPath(hdc);
+    SetPolyFillMode(hdc, old_fill);
+    SelectObject(hdc, old_pen);
+    SelectObject(hdc, old_brush);
+    DeleteObject(brush);
+    return has_path;
+}
+
 void ApplyButton(int index) {
     auto buttons = ButtonItems();
     int tool_count = static_cast<int>(buttons.size());
@@ -573,7 +739,19 @@ void ApplyButton(int index) {
     }
 }
 
-void PaintToolbarButton(HDC hdc, RECT rc, bool editor_button) {
+void ApplyCustomButtonByName(const std::wstring& name) {
+    for (const auto& button : g_custom_buttons) {
+        if (button.name == name) {
+            ShowWindow(g_hwnd, SW_HIDE);
+            if (g_apply_callback) {
+                g_apply_callback(CustomToItem(button));
+            }
+            return;
+        }
+    }
+}
+
+void PaintToolbarButton(HDC hdc, RECT rc, const std::wstring& icon_name) {
     HBRUSH bg = CreateSolidBrush(RGB(35, 35, 35));
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
@@ -590,25 +768,11 @@ void PaintToolbarButton(HDC hdc, RECT rc, bool editor_button) {
     HGDIOBJ gear_old = SelectObject(hdc, gear_pen);
     int cx = (rc.left + rc.right) / 2;
     int cy = (rc.top + rc.bottom) / 2;
-    if (editor_button) {
-        MoveToEx(hdc, cx - 9, cy + 10, nullptr);
-        LineTo(hdc, cx + 8, cy - 7);
-        Ellipse(hdc, cx + 4, cy - 12, cx + 15, cy - 1);
-        MoveToEx(hdc, cx - 12, cy + 7, nullptr);
-        LineTo(hdc, cx - 6, cy + 13);
-    } else {
-        Ellipse(hdc, cx - 11, cy - 11, cx + 11, cy + 11);
-        MoveToEx(hdc, cx - 15, cy, nullptr);
-        LineTo(hdc, cx + 15, cy);
-        MoveToEx(hdc, cx, cy - 15, nullptr);
-        LineTo(hdc, cx, cy + 15);
-        MoveToEx(hdc, cx - 5, cy - 5, nullptr);
-        LineTo(hdc, cx + 5, cy + 5);
-        MoveToEx(hdc, cx + 5, cy - 5, nullptr);
-        LineTo(hdc, cx - 5, cy + 5);
-    }
+    RECT icon_rc = {cx - 13, cy - 13, cx + 13, cy + 13};
     SelectObject(hdc, gear_old);
     DeleteObject(gear_pen);
+    DrawNamedIcon(hdc, icon_rc, icon_name, RGB(205, 205, 205));
+    return;
 }
 
 LRESULT CALLBACK ToolsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -622,8 +786,8 @@ LRESULT CALLBACK ToolsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         DeleteObject(bg);
         RECT filters = {0, 0, 46, 38};
         RECT editor = {52, 0, 98, 38};
-        PaintToolbarButton(hdc, filters, false);
-        PaintToolbarButton(hdc, editor, true);
+        PaintToolbarButton(hdc, filters, L"tune");
+        PaintToolbarButton(hdc, editor, L"dashboard_customize");
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -635,6 +799,28 @@ LRESULT CALLBACK ToolsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             HideSettings();
             ShowManager();
         }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
+}
+
+LRESULT CALLBACK ScreenshotProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        HBRUSH bg = CreateSolidBrush(kBg);
+        FillRect(hdc, &rc, bg);
+        DeleteObject(bg);
+        RECT btn = {0, 0, rc.right, rc.bottom};
+        PaintToolbarButton(hdc, btn, L"photo_camera");
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    if (msg == WM_LBUTTONDOWN) {
+        HideSettings();
+        ApplyCustomButtonByName(L"Screenshot");
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -673,6 +859,7 @@ COLORREF KindAccent(const PBQA_ResultItem& item) {
 }
 
 COLORREF ParseButtonColor(const std::wstring& value);
+bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color);
 
 std::wstring ButtonIcon(const CustomButton& button) {
     if (button.icon.empty()) return L"*";
@@ -680,6 +867,10 @@ std::wstring ButtonIcon(const CustomButton& button) {
 }
 
 bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
+    if (DrawMaterialSvgPath(hdc, rc, MaterialPath(icon), color)) {
+        return true;
+    }
+
     std::wstring name = Lower(icon);
     HPEN pen = CreatePen(PS_SOLID, 2, color);
     HBRUSH brush = CreateSolidBrush(color);
@@ -698,12 +889,37 @@ bool DrawNamedIcon(HDC hdc, RECT rc, const std::wstring& icon, COLORREF color) {
         return true;
     };
 
-    if (name == L"camera" || name == L"video" || name == L"videocam" || name == L"photo_camera") {
+    if (name == L"photo_camera") {
+        Rectangle(hdc, rc.left + w / 6, cy - h / 5, rc.right - w / 8, cy + h / 4);
+        Ellipse(hdc, cx - w / 8, cy - h / 8, cx + w / 8, cy + h / 8);
+        Rectangle(hdc, rc.left + w / 4, rc.top + h / 6, rc.left + w / 2, cy - h / 5);
+        return finish();
+    }
+    if (name == L"camera" || name == L"video" || name == L"videocam") {
         Rectangle(hdc, rc.left + w / 6, cy - h / 5, rc.left + w * 2 / 3, cy + h / 5);
         MoveToEx(hdc, rc.left + w * 2 / 3, cy - h / 8, nullptr);
         LineTo(hdc, rc.right - w / 8, cy - h / 3);
         LineTo(hdc, rc.right - w / 8, cy + h / 3);
         LineTo(hdc, rc.left + w * 2 / 3, cy + h / 8);
+        return finish();
+    }
+    if (name == L"tune") {
+        MoveToEx(hdc, rc.left + 4, rc.top + 8, nullptr); LineTo(hdc, rc.right - 4, rc.top + 8);
+        MoveToEx(hdc, rc.left + 4, cy, nullptr); LineTo(hdc, rc.right - 4, cy);
+        MoveToEx(hdc, rc.left + 4, rc.bottom - 8, nullptr); LineTo(hdc, rc.right - 4, rc.bottom - 8);
+        HGDIOBJ old_fill = SelectObject(hdc, brush);
+        Ellipse(hdc, rc.left + 9, rc.top + 4, rc.left + 17, rc.top + 12);
+        Ellipse(hdc, rc.right - 18, cy - 4, rc.right - 10, cy + 4);
+        Ellipse(hdc, cx - 4, rc.bottom - 12, cx + 4, rc.bottom - 4);
+        SelectObject(hdc, old_fill);
+        return finish();
+    }
+    if (name == L"dashboard_customize") {
+        Rectangle(hdc, rc.left + 4, rc.top + 4, cx - 2, cy - 2);
+        Rectangle(hdc, cx + 2, rc.top + 4, rc.right - 4, cy - 2);
+        Rectangle(hdc, rc.left + 4, cy + 2, cx - 2, rc.bottom - 4);
+        MoveToEx(hdc, cx + 5, cy + 7, nullptr); LineTo(hdc, rc.right - 5, cy + 7);
+        MoveToEx(hdc, rc.right - 10, cy + 2, nullptr); LineTo(hdc, rc.right - 10, rc.bottom - 4);
         return finish();
     }
     if (name == L"search" || name == L"zoom") {
@@ -861,23 +1077,13 @@ void DrawButtonStripButton(HDC hdc, RECT rc, const PBQA_ResultItem& item, int nu
 }
 
 void DrawCustomStripButton(HDC hdc, RECT rc, const CustomButton& button) {
-    HBRUSH bg = CreateSolidBrush(RGB(31, 31, 31));
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(64, 64, 64));
-    HGDIOBJ old_brush = SelectObject(hdc, bg);
-    HGDIOBJ old_pen = SelectObject(hdc, pen);
-    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 6, 6);
-    SelectObject(hdc, old_pen);
-    SelectObject(hdc, old_brush);
-    DeleteObject(pen);
-    DeleteObject(bg);
-
     SetBkMode(hdc, TRANSPARENT);
-    RECT icon_rc = {rc.left + 6, rc.top + 5, rc.left + 38, rc.bottom - 5};
+    int size = std::min<int>(rc.right - rc.left, rc.bottom - rc.top);
+    size = std::max(18, std::min(34, size - 8));
+    int cx = (rc.left + rc.right) / 2;
+    int cy = (rc.top + rc.bottom) / 2;
+    RECT icon_rc = {cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2};
     DrawButtonIconOrText(hdc, icon_rc, button);
-
-    SetTextColor(hdc, RGB(235, 235, 235));
-    RECT label_rc = {rc.left + 42, rc.top + 5, rc.right - 10, rc.bottom - 5};
-    DrawTextW(hdc, button.name.c_str(), -1, &label_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 }
 
 void DrawManagerTabs(HDC hdc, RECT rc) {
@@ -907,36 +1113,33 @@ void DrawManagerTabs(HDC hdc, RECT rc) {
 }
 
 LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    auto layout = [&](RECT rc, int count, int* cols, int* cell_w, int* cell_h, int* gap) {
+        *gap = std::max(2, g_button_spacing);
+        int base = std::max(36, std::min(96, g_button_size));
+        *cols = std::max<int>(1, (rc.right + *gap) / (base + *gap));
+        *cell_w = std::max<int>(34, (rc.right - (*cols - 1) * (*gap)) / *cols);
+        *cell_h = std::max(32, std::min(54, base));
+        if (count > 0 && *cols > count) {
+            *cols = count;
+            *cell_w = std::max<int>(34, (rc.right - (*cols - 1) * (*gap)) / *cols);
+        }
+    };
+
     auto hit_index = [&](int px, int py) -> int {
         RECT rc;
         GetClientRect(hwnd, &rc);
         auto buttons = ButtonItems();
-        int x = 0;
-        int y = 4;
-        const int gap = g_button_spacing;
-        const int bh = 34;
-        for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-            int bw = std::max(96, g_button_size);
-            if (x > 0 && x + bw > rc.right) {
-                x = 0;
-                y += bh + gap;
-            }
-            if (py >= y && py < y + bh && px >= x && px < x + bw) {
+        int total = static_cast<int>(buttons.size() + g_custom_buttons.size());
+        int cols = 1, cell_w = 42, cell_h = 42, gap = 6;
+        layout(rc, total, &cols, &cell_w, &cell_h, &gap);
+        for (int i = 0; i < total; ++i) {
+            int col = i % cols;
+            int row = i / cols;
+            int x = col * (cell_w + gap);
+            int y = 4 + row * (cell_h + gap);
+            if (py >= y && py < y + cell_h && px >= x && px < x + cell_w) {
                 return i;
             }
-            x += bw + gap;
-        }
-        int tool_count = static_cast<int>(buttons.size());
-        for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
-            int bw = std::max(54, g_button_size);
-            if (x > 0 && x + bw > rc.right) {
-                x = 0;
-                y += bh + gap;
-            }
-            if (py >= y && py < y + bh && px >= x && px < x + bw) {
-                return tool_count + i;
-            }
-            x += bw + gap;
         }
         return -1;
     };
@@ -953,35 +1156,24 @@ LRESULT CALLBACK ButtonsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
             SelectObject(hdc, g_font);
             auto buttons = ButtonItems();
-            int x = 0;
-            int y = 4;
-            const int gap = g_button_spacing;
-            const int bh = 34;
-            for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
-                int bw = std::max(96, g_button_size);
-                if (x > 0 && x + bw > rc.right) {
-                    x = 0;
-                    y += bh + gap;
+            int total = static_cast<int>(buttons.size() + g_custom_buttons.size());
+            int cols = 1, cell_w = 42, cell_h = 42, gap = 6;
+            layout(rc, total, &cols, &cell_w, &cell_h, &gap);
+            int tool_count = static_cast<int>(buttons.size());
+            for (int i = 0; i < total; ++i) {
+                int col = i % cols;
+                int row = i / cols;
+                int x = col * (cell_w + gap);
+                int y = 4 + row * (cell_h + gap);
+                if (y + cell_h > rc.bottom) {
+                    continue;
                 }
-                if (y + bh > rc.bottom) {
-                    break;
+                RECT brc = {x, y, x + cell_w, y + cell_h};
+                if (i < tool_count) {
+                    DrawButtonStripButton(hdc, brc, g_items[buttons[static_cast<size_t>(i)]], i + 1);
+                } else {
+                    DrawCustomStripButton(hdc, brc, g_custom_buttons[static_cast<size_t>(i - tool_count)]);
                 }
-                RECT brc = {x, y, x + bw, y + bh};
-                DrawButtonStripButton(hdc, brc, g_items[buttons[i]], i + 1);
-                x += bw + gap;
-            }
-            for (int i = 0; i < static_cast<int>(g_custom_buttons.size()); ++i) {
-                int bw = std::max(54, g_button_size);
-                if (x > 0 && x + bw > rc.right) {
-                    x = 0;
-                    y += bh + gap;
-                }
-                if (y + bh > rc.bottom) {
-                    break;
-                }
-                RECT brc = {x, y, x + bw, y + bh};
-                DrawCustomStripButton(hdc, brc, g_custom_buttons[static_cast<size_t>(i)]);
-                x += bw + gap;
             }
             EndPaint(hwnd, &ps);
             return 0;
@@ -1616,8 +1808,8 @@ LRESULT CALLBACK ManagerProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
                 if (id == IDC_SIZE_PLUS) g_button_size += 8;
                 if (id == IDC_SPACE_MINUS) g_button_spacing -= 2;
                 if (id == IDC_SPACE_PLUS) g_button_spacing += 2;
-                if (g_button_size < 72) g_button_size = 72;
-                if (g_button_size > 260) g_button_size = 260;
+                if (g_button_size < 36) g_button_size = 36;
+                if (g_button_size > 96) g_button_size = 96;
                 if (g_button_spacing < 0) g_button_spacing = 0;
                 if (g_button_spacing > 32) g_button_spacing = 32;
                 SaveSettings();
@@ -1669,7 +1861,8 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 void LayoutPopup(HWND hwnd, int w, int h) {
     bool show_results = SearchListVisible();
     MoveWindow(g_tools, 13, 10, 100, 39, TRUE);
-    MoveWindow(g_edit, 124, 11, std::max(160, w - 148), 38, TRUE);
+    MoveWindow(g_edit, 124, 11, std::max(160, w - 202), 38, TRUE);
+    MoveWindow(g_screenshot_button, w - 67, 10, 46, 39, TRUE);
     MoveWindow(g_buttons, 13, 58, std::max(220, w - 26), 126, TRUE);
     MoveWindow(g_results, 13, 194, std::max(220, w - 26), show_results ? std::max(110, h - 239) : 0, TRUE);
     ShowWindow(g_results, show_results ? SW_SHOW : SW_HIDE);
@@ -1704,6 +1897,7 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
             g_tools = CreateWindowExW(0, L"PBQA_Tools", L"", WS_CHILD | WS_VISIBLE, 13, 10, 100, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 124, 11, 576, 38, hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
+            g_screenshot_button = CreateWindowExW(0, L"PBQA_Screenshot", L"", WS_CHILD | WS_VISIBLE, 658, 10, 46, 39, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_buttons = CreateWindowExW(0, L"PBQA_Buttons", L"", WS_CHILD | WS_VISIBLE, 13, 58, 696, 126, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_results = CreateWindowExW(0, L"PBQA_Results", L"", WS_CHILD | WS_VISIBLE, 13, 194, 696, 310, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             g_settings = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"PBQA_Settings", L"", WS_POPUP, 0, 0, 330, 174, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -1724,6 +1918,7 @@ LRESULT CALLBACK PopupProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 g_selected = 0;
                 FilterItems();
                 FitPopupToSearchState();
+                SetFocus(g_edit);
                 return 0;
             }
             break;
@@ -1809,6 +2004,14 @@ void RegisterClassOnce() {
     tools.hCursor = LoadCursor(nullptr, IDC_ARROW);
     tools.hbrBackground = CreateSolidBrush(kBg);
     RegisterClassW(&tools);
+
+    WNDCLASSW shot = {};
+    shot.lpfnWndProc = ScreenshotProc;
+    shot.hInstance = GetModuleHandleW(nullptr);
+    shot.lpszClassName = L"PBQA_Screenshot";
+    shot.hCursor = LoadCursor(nullptr, IDC_HAND);
+    shot.hbrBackground = CreateSolidBrush(kBg);
+    RegisterClassW(&shot);
 
     WNDCLASSW buttons = {};
     buttons.lpfnWndProc = ButtonsProc;
